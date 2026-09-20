@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NULL//EXCHANGE - DROP_ASSET</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Space Mono, VT323 e JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=VT323&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            noir: {
+              950: '#07050e',
+              900: '#0e0b1a',
+              800: '#17122b',
+              700: '#261c47',
+              600: '#3d2b6b',
+            },
+            neon: {
+              pink: '#ff0055',
+              cyan: '#00f0ff',
+              mint: '#05ffa1',
+              amber: '#ffbe0b',
+            }
+          },
+          fontFamily: {
+            pixel: ['"VT323"', 'monospace'],
+            mono: ['"Space Mono"', 'monospace'],
+            code: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .scanlines {
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.45) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 255, 0, 0.03)
+      );
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none !important;
+    }
+
+    .chamfer-box {
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    
+    .chamfer-tag {
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    .glow-pink {
+      box-shadow: 0 0 15px rgba(255, 0, 85, 0.35);
+    }
+  </style>
+</head>
+<body class="bg-noir-950 text-slate-200 font-mono antialiased min-h-screen pb-28 relative overflow-x-hidden selection:bg-neon-pink selection:text-white">
+
+  <!-- Scanlines CRT Overlay -->
+  <div class="fixed inset-0 scanlines z-10"></div>
+
+  <!-- Ambient Glow Effects -->
+  <div class="fixed top-10 right-0 w-80 h-80 bg-neon-pink/10 rounded-full blur-[110px] pointer-events-none z-0"></div>
+  <div class="fixed bottom-20 left-0 w-80 h-80 bg-neon-cyan/10 rounded-full blur-[110px] pointer-events-none z-0"></div>
+
+  <!-- ================= TOP BAR ================= -->
+  <header class="sticky top-0 z-40 bg-noir-950/90 backdrop-blur-md border-b border-noir-700/70 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <a href="index.html" class="text-neon-cyan hover:text-white text-xs font-code">[ESC]</a>
+      <div class="h-4 w-px bg-noir-700"></div>
+      <div>
+        <h1 class="font-pixel text-xl tracking-widest text-white leading-none">
+          UPLOAD<span class="text-neon-pink">//</span>ASSET
+        </h1>
+        <p class="font-code text-[9px] text-slate-400">LOG_NEW_INVENTORY_ENTRY</p>
+      </div>
+    </div>
+    <span class="font-code text-[10px] text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag bg-noir-900">
+      SEC_LVL: 04
+    </span>
+  </header>
+
+  <main class="relative z-30 px-4 pt-4 max-w-md mx-auto space-y-5">
+
+    <!-- OPERADOR ATIVO IDENTIFICADO -->
+    <div class="bg-noir-900/80 border border-noir-700 p-2.5 chamfer-box flex items-center justify-between text-xs font-code">
+      <div class="flex items-center space-x-2">
+        <span class="w-2 h-2 bg-neon-mint animate-pulse rounded-none"></span>
+        <span class="text-slate-400 text-[11px]">VENDEDOR:</span>
+        <span id="active-operator-badge" class="text-neon-cyan font-bold">@K3nji_Zero</span>
+      </div>
+      <a id="operator-auth-link" href="login.html" class="text-[10px] text-slate-500 hover:text-neon-pink transition-colors">
+        [TROCAR]
+      </a>
+    </div>
+
+    <!-- PROTOCOL STEP HEADER -->
+    <div class="flex items-center justify-between border-b border-noir-800 pb-2">
+      <span class="text-xs font-code text-neon-pink font-bold">// STEP 01: MEDIA_MANIFEST</span>
+      <span class="text-[10px] font-code text-slate-500">SYS_REV: 2.6.0</span>
+    </div>
+
+    <!-- ================= REGISTRO VISUAL ================= -->
+    <section class="space-y-2">
+      <label class="block text-[11px] font-code text-slate-400 uppercase tracking-wider">
+        [01] Registro Visual da Mídia
+      </label>
+      
+      <input 
+        id="input-photo" 
+        type="file" 
+        accept="image/*" 
+        class="hidden" 
+        onchange="processImageFile(this)"
+      />
+
+      <div class="relative w-full aspect-[16/9] border-2 border-dashed border-noir-700 hover:border-neon-pink bg-noir-900/60 chamfer-box overflow-hidden transition-all">
+        
+        <!-- Estado Vazio -->
+        <div 
+          id="upload-placeholder"
+          onclick="document.getElementById('input-photo').click()" 
+          class="w-full h-full flex flex-col items-center justify-center cursor-pointer group"
+        >
+          <div class="w-12 h-12 border border-noir-600 group-hover:border-neon-pink flex items-center justify-center text-neon-pink mb-2 transition-colors">
+            <span class="font-pixel text-3xl leading-none">+</span>
+          </div>
+          <p class="text-xs font-code text-white font-bold group-hover:text-neon-pink">UPLOAD_RAW_SNAP</p>
+          <p class="text-[10px] font-code text-slate-500 mt-0.5">TOQUE PARA SELECIONAR FOTO DA MÍDIA</p>
+        </div>
+
+        <!-- Estado Carregado -->
+        <div id="upload-preview" class="hidden w-full h-full relative">
+          <img 
+            id="preview-img" 
+            src="" 
+            alt="Foto da mídia física" 
+            class="w-full h-full object-cover filter grayscale contrast-125"
+          />
+          <button 
+            type="button" 
+            onclick="clearUploadedPhoto(event)"
+            class="absolute top-2 left-2 px-2.5 py-1 bg-noir-950/95 hover:bg-neon-pink hover:text-white text-neon-pink border border-neon-pink chamfer-tag flex items-center justify-center font-bold text-xs transition-all z-20 cursor-pointer shadow-lg"
+            title="Remover Imagem"
+          >
+            ✕ REMOVER
+          </button>
+          <span id="photo-size-tag" class="absolute bottom-2 right-2 bg-noir-950/90 text-[9px] font-code text-neon-mint px-2 py-0.5 border border-neon-mint/40">
+            OPTIMIZED
+          </span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= DADOS DO JOGO ================= -->
+    <section class="space-y-3.5">
+      <div>
+        <label class="block text-[11px] font-code text-slate-400 mb-1 uppercase tracking-wider">
+          [02] Título do Jogo
+        </label>
+        <div class="relative">
+          <input 
+            id="input-title"
+            type="text" 
+            placeholder="Ex: SUPER MARIO WORLD, SILENT HILL..."
+            class="w-full bg-noir-900 border border-noir-700 px-3 py-2.5 text-xs text-white font-code placeholder-slate-600 focus:outline-none focus:border-neon-pink"
+            value="SUPER MARIO WORLD"
+          />
+        </div>
+      </div>
+
+      <!-- SELECTS MARCA & CONSOLE -->
+      <div class="space-y-2">
+        <label class="block text-[11px] font-code text-slate-400 uppercase tracking-wider">
+          [03] Fabricante & Console (Gen 1 - 8)
+        </label>
+        
+        <div class="grid grid-cols-2 gap-2">
+          <div class="relative">
+            <select 
+              id="brand-select" 
+              class="w-full bg-noir-900 border border-noir-700 text-slate-200 text-xs font-code px-3 py-2.5 rounded-none focus:outline-none focus:border-neon-pink appearance-none cursor-pointer"
+            >
+              <option value="NINTENDO" selected>NINTENDO</option>
+              <option value="SONY">SONY</option>
+              <option value="SEGA">SEGA</option>
+              <option value="MS">XBOX / MS</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-neon-pink font-code text-xs">
+              ▼
+            </div>
+          </div>
+
+          <div class="relative">
+            <select 
+              id="platform-select" 
+              class="w-full bg-noir-900 border border-noir-700 text-slate-200 text-xs font-code px-3 py-2.5 rounded-none focus:outline-none focus:border-neon-pink appearance-none cursor-pointer"
+            >
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-neon-pink font-code text-xs">
+              ▼
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Diagnóstico Físico -->
+      <div>
+        <label class="block text-[11px] font-code text-slate-400 mb-1 uppercase tracking-wider">
+          [04] Diagnóstico Físico & Operação
+        </label>
+        <div class="grid grid-cols-2 gap-2 text-[11px] font-code">
+          <label class="flex items-center space-x-2 bg-noir-900 border border-noir-700 p-2 cursor-pointer hover:border-neon-cyan">
+            <input id="chk-box" type="checkbox" checked class="accent-neon-pink">
+            <span class="text-slate-300">Caixa Original (Box)</span>
+          </label>
+          <label class="flex items-center space-x-2 bg-noir-900 border border-noir-700 p-2 cursor-pointer hover:border-neon-cyan">
+            <input id="chk-manual" type="checkbox" checked class="accent-neon-pink">
+            <span class="text-slate-300">Manual Incluso</span>
+          </label>
+          
+          <label class="flex items-center space-x-2 bg-noir-900 border border-neon-mint/60 p-2 cursor-pointer hover:border-neon-mint col-span-2" id="functional-label-box">
+            <input id="chk-functional" type="checkbox" checked onchange="toggleFunctionalState(this)" class="accent-neon-mint">
+            <span class="text-neon-mint font-bold" id="functional-text-label">✓ MÍDIA TESTADA & 100% OPERACIONAL</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preço -->
+    <section>
+      <label class="block text-[11px] font-code text-slate-400 mb-1 uppercase tracking-wider">
+        [05] Preço Solicitado
+      </label>
+      <div class="flex items-center bg-noir-900 border border-noir-700 px-3 py-2 focus-within:border-neon-pink">
+        <span class="text-neon-pink font-code text-sm mr-2 font-bold">R$</span>
+        <input 
+          id="input-price"
+          type="number" 
+          step="0.01"
+          value="95.00" 
+          class="w-full bg-transparent text-white font-pixel text-2xl focus:outline-none"
+        />
+        <span class="text-[10px] font-code text-slate-500 shrink-0">BRL_FIAT</span>
+      </div>
+    </section>
+
+    <!-- Botão de Transmissão -->
+    <div class="pt-2">
+      <button 
+        type="button"
+        id="btn-submit-asset"
+        onclick="executeTransmission(event)"
+        class="w-full bg-neon-pink hover:bg-neon-pink/90 text-white font-code font-bold py-3.5 text-xs uppercase tracking-widest chamfer-box glow-pink active:scale-95 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+      >
+        <span>TRANSMIT_TO_NETWORK</span>
+        <span class="font-pixel text-base">>></span>
+      </button>
+      <p class="text-[9px] font-code text-slate-500 text-center mt-2">
+        // ASSET VINCULADO AO OPERADOR ATIVO // REDIRECIONA AO FEED
+      </p>
+    </div>
+
+  </main>
+
+  <!-- BOTTOM NAV -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-noir-950/95 backdrop-blur-lg border-t border-noir-700/80 px-4 py-2">
+    <div class="flex justify-around items-center max-w-md mx-auto">
+      <a href="index.html" class="flex flex-col items-center text-slate-500 hover:text-neon-pink">
+        <span class="font-pixel text-lg">■</span>
+        <span class="font-code text-[9px] tracking-tighter">EXCHANGE</span>
+      </a>
+      <a href="offers.html" class="flex flex-col items-center text-slate-500 hover:text-neon-cyan">
+        <span class="font-pixel text-lg">◈</span>
+        <span class="font-code text-[9px] tracking-tighter">OFFERS</span>
+      </a>
+      <a href="sell.html" class="bg-neon-pink text-white p-2.5 chamfer-box glow-pink hover:scale-105 active:scale-95 transition-all -mt-5 border border-white/20 flex items-center justify-center">
+        <span class="font-code text-xs font-bold leading-none">+SELL</span>
+      </a>
+      <a href="help.html" class="flex flex-col items-center text-slate-500 hover:text-neon-cyan">
+        <span class="font-pixel text-lg">?</span>
+        <span class="font-code text-[9px] tracking-tighter">HELP_LOG</span>
+      </a>
+      <a href="profile.html" class="flex flex-col items-center text-slate-500 hover:text-neon-pink">
+        <span class="font-pixel text-lg">◉</span>
+        <span class="font-code text-[9px] tracking-tighter">PROFILE</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- ================= SCRIPTS ================= -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://auglycutiemdklxtmcii.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_GukE9sHZ40kvvOiQ8d84kQ_Rtl14r27';
+    let supabaseClient = null;
+
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+      console.warn("Falha ao inicializar SDK Supabase:", e);
+    }
+
+    const CONSOLES_DATABASE = {
+      NINTENDO: [
+        { label: "Super Nintendo (SNES)", value: "SNES (CART)" },
+        { label: "Nintendo 64", value: "N64 (CART)" },
+        { label: "Nintendo GameCube", value: "GAMECUBE" },
+        { label: "Nintendo Wii", value: "WII (DISC)" },
+        { label: "Wii U", value: "WII U" },
+        { label: "Nintendo Switch", value: "SWITCH (CART)" },
+        { label: "NES / Famicom", value: "NES (CART)" },
+        { label: "Game Boy / Color", value: "GAME BOY" },
+        { label: "Game Boy Advance", value: "GBA (CART)" },
+        { label: "Nintendo DS / 3DS", value: "NDS/3DS" }
+      ],
+      SONY: [
+        { label: "PlayStation 1", value: "PS1 (DISC)" },
+        { label: "PlayStation 2", value: "PS2 (DISC)" },
+        { label: "PlayStation 3", value: "PS3 (DISC)" },
+        { label: "PlayStation 4", value: "PS4 (DISC)" },
+        { label: "PlayStation Portable (PSP)", value: "PSP (UMD)" },
+        { label: "PlayStation Vita", value: "PS VITA" }
+      ],
+      SEGA: [
+        { label: "Sega Mega Drive / Genesis", value: "MEGA DRIVE" },
+        { label: "Sega Master System", value: "MASTER SYSTEM" },
+        { label: "Sega Saturn", value: "SATURN" },
+        { label: "Sega Dreamcast", value: "DREAMCAST" },
+        { label: "Sega Game Gear", value: "GAME GEAR" }
+      ],
+      MS: [
+        { label: "Xbox Classic", value: "XBOX CLASSIC" },
+        { label: "Xbox 360", value: "XBOX 360" },
+        { label: "Xbox One", value: "XBOX ONE" }
+      ]
+    };
+
+    let processedImageBase64 = null;
+    let currentOperatorHandle = '@K3nji_Zero'; // fallback padrão
+
+    // 1. VERIFICA E IDENTIFICA O OPERADOR ATIVO
+    function checkActiveOperator() {
+      const rawSession = localStorage.getItem('null_operative_session');
+      const badge = document.getElementById('active-operator-badge');
+      const authLink = document.getElementById('operator-auth-link');
+
+      if (rawSession) {
+        try {
+          const operative = JSON.parse(rawSession);
+          if (operative.handle) {
+            currentOperatorHandle = operative.handle;
+            badge.textContent = currentOperatorHandle;
+            badge.className = "text-neon-mint font-bold";
+            authLink.textContent = "[PERFIL]";
+            authLink.href = "profile.html";
+            return;
+          }
+        } catch (e) {
+          console.warn("Falha ao parsear sessão:", e);
+        }
+      }
+
+      // Visitante ou fallback
+      badge.textContent = "@Visitante (Anônimo)";
+      badge.className = "text-neon-amber font-bold";
+      authLink.textContent = "[LOGAR]";
+      authLink.href = "login.html";
+      currentOperatorHandle = '@Visitante';
+    }
+
+    function updateConsoleSelect(brand) {
+      const platformSelect = document.getElementById('platform-select');
+      const consoles = CONSOLES_DATABASE[brand] || [];
+      
+      platformSelect.innerHTML = '';
+      consoles.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.value;
+        opt.textContent = item.label;
+        opt.className = "bg-noir-950 text-slate-200";
+        platformSelect.appendChild(opt);
+      });
+    }
+
+    function processImageFile(input) {
+      if (!input.files || !input.files[0]) return;
+
+      const file = input.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          processedImageBase64 = canvas.toDataURL('image/jpeg', 0.75);
+
+          document.getElementById('preview-img').src = processedImageBase64;
+          document.getElementById('upload-placeholder').classList.add('hidden');
+          document.getElementById('upload-preview').classList.remove('hidden');
+          
+          const kbSize = Math.round((processedImageBase64.length * 3/4) / 1024);
+          document.getElementById('photo-size-tag').textContent = `OPTIMIZED: ${kbSize} KB`;
+        };
+        img.src = e.target.result;
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    function clearUploadedPhoto(event) {
+      if (event) event.stopPropagation();
+      processedImageBase64 = null;
+      document.getElementById('input-photo').value = '';
+      document.getElementById('preview-img').src = '';
+      document.getElementById('upload-preview').classList.add('hidden');
+      document.getElementById('upload-placeholder').classList.remove('hidden');
+    }
+
+    function toggleFunctionalState(checkbox) {
+      const label = document.getElementById('functional-text-label');
+      const box = document.getElementById('functional-label-box');
+      
+      if (!checkbox.checked) {
+        label.textContent = "⚠ MÍDIA NÃO ESTÁ FUNCIONANDO (PARA CONSERTO / PEÇAS)";
+        label.className = "text-neon-amber font-bold";
+        box.className = "flex items-center space-x-2 bg-noir-900 border border-neon-amber/60 p-2 cursor-pointer col-span-2";
+      } else {
+        label.textContent = "✓ MÍDIA TESTADA & 100% OPERACIONAL";
+        label.className = "text-neon-mint font-bold";
+        box.className = "flex items-center space-x-2 bg-noir-900 border border-neon-mint/60 p-2 cursor-pointer col-span-2";
+      }
+    }
+
+    // 2. TRANSMISSÃO COM O VENDEDOR AUTENTICADO REAL
+    async function executeTransmission(event) {
+      event.preventDefault();
+
+      const btn = document.getElementById('btn-submit-asset');
+      btn.innerHTML = `<span>TRANSMITTING_DATA...</span><span class="font-pixel text-base animate-pulse">>></span>`;
+      btn.disabled = true;
+
+      const title = document.getElementById('input-title').value.trim() || 'SUPER MARIO WORLD';
+      const platform = document.getElementById('platform-select').value || 'SNES (CART)';
+      const price = parseFloat(document.getElementById('input-price').value) || 0.00;
+      const hasBox = document.getElementById('chk-box').checked;
+      const hasManual = document.getElementById('chk-manual').checked;
+      const isFunctional = document.getElementById('chk-functional').checked;
+
+      const finalImage = processedImageBase64 || "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80";
+      
+      const conditionTag = !isFunctional 
+        ? '[DEFECTIVE // PARTS]' 
+        : (hasBox ? '[CIB // 9.5]' : '[LOOSE_CART]');
+
+      try {
+        if (!supabaseClient) {
+          throw new Error("Cliente Supabase não inicializado.");
+        }
+
+        // Inserção com seller_handle vindo da sessão ativa
+        const { error } = await supabaseClient
+          .from('products')
+          .insert([
+            {
+              title: title,
+              platform: platform,
+              price: price,
+              has_box: hasBox,
+              has_manual: hasManual,
+              is_functional: isFunctional,
+              is_mint: false,
+              image_url: finalImage,
+              seller_handle: currentOperatorHandle,
+              condition_tag: conditionTag,
+              status: 'AVAILABLE'
+            }
+          ]);
+
+        if (error) throw error;
+
+        // Se cadastrou com sucesso, redireciona ao index
+        window.location.href = `index.html?status=success&item=${encodeURIComponent(title)}`;
+
+      } catch (err) {
+        console.error("Erro na transmissão:", err);
+        window.location.href = `index.html?status=error&msg=${encodeURIComponent(err.message || 'Falha de comunicação com o banco')}`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      checkActiveOperator();
+
+      const brandSelect = document.getElementById('brand-select');
+      brandSelect.value = 'NINTENDO';
+      updateConsoleSelect('NINTENDO');
+
+      brandSelect.addEventListener('change', (e) => {
+        updateConsoleSelect(e.target.value);
+      });
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NULL//EXCHANGE - OPERATIVE_AUTH</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=VT323&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            noir: {
+              950: '#07050e',
+              900: '#0e0b1a',
+              800: '#17122b',
+              700: '#261c47',
+              600: '#3d2b6b',
+            },
+            neon: {
+              pink: '#ff0055',
+              cyan: '#00f0ff',
+              mint: '#05ffa1',
+              amber: '#ffbe0b',
+            }
+          },
+          fontFamily: {
+            pixel: ['"VT323"', 'monospace'],
+            mono: ['"Space Mono"', 'monospace'],
+            code: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .scanlines {
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.45) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 255, 0, 0.03)
+      );
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none !important;
+    }
+
+    .chamfer-box {
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    
+    .chamfer-tag {
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    .glow-pink {
+      box-shadow: 0 0 16px rgba(255, 0, 85, 0.35);
+    }
+
+    .glow-cyan {
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.3);
+    }
+  </style>
+</head>
+<body class="bg-noir-950 text-slate-200 font-mono antialiased min-h-screen relative overflow-x-hidden flex flex-col justify-between selection:bg-neon-pink selection:text-white">
+
+  <div class="fixed inset-0 scanlines z-10"></div>
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-neon-pink/10 rounded-full blur-[120px] pointer-events-none z-0"></div>
+  <div class="fixed bottom-0 right-0 w-80 h-80 bg-neon-cyan/10 rounded-full blur-[110px] pointer-events-none z-0"></div>
+
+  <!-- HEADER -->
+  <header class="p-4 flex items-center justify-between border-b border-noir-800/80 bg-noir-950/80 backdrop-blur-sm z-30">
+    <a href="index.html" class="flex items-center space-x-2 group">
+      <span class="text-neon-cyan font-code text-xs group-hover:-translate-x-1 transition-transform"><<</span>
+      <span class="text-slate-400 font-code text-xs group-hover:text-white">RETURN_TO_FEED</span>
+    </a>
+    <span class="font-code text-[10px] text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag bg-noir-900">
+      PORT: 8080 // SECURE
+    </span>
+  </header>
+
+  <!-- MAIN AUTH CONTAINER -->
+  <main class="relative z-30 px-4 py-8 max-w-sm mx-auto w-full">
+    
+    <div class="text-center mb-6">
+      <div class="inline-block mb-2">
+        <span class="font-pixel text-4xl text-white tracking-widest leading-none block">
+          NULL<span class="text-neon-pink">//</span>AUTH
+        </span>
+        <span class="font-code text-[9px] text-neon-cyan tracking-widest block uppercase">District Protocol :: Clearance Required</span>
+      </div>
+    </div>
+
+    <!-- Toggle Selector -->
+    <div class="grid grid-cols-2 gap-1 bg-noir-900 p-1 border border-noir-700 mb-5 font-code text-xs">
+      <button id="tab-login" type="button" onclick="switchMode('login')" class="py-2 text-center bg-neon-pink text-white font-bold transition-all chamfer-tag">
+        [LOGIN]
+      </button>
+      <button id="tab-register" type="button" onclick="switchMode('register')" class="py-2 text-center text-slate-400 hover:text-white transition-all chamfer-tag">
+        [NOVO_OPERADOR]
+      </button>
+    </div>
+
+    <!-- AUTH FORM CARD -->
+    <div class="bg-noir-900/90 border border-noir-700 p-5 chamfer-box relative glow-pink">
+      <form onsubmit="handleAuth(event)" class="space-y-4">
+        
+        <!-- Field: Handle (Novo Operador) -->
+        <div id="field-handle" class="hidden">
+          <label class="block text-[10px] font-code text-slate-400 mb-1 uppercase tracking-wider">
+            // OPERATIVE_TAG (HANDLE)
+          </label>
+          <div class="flex items-center bg-noir-950 border border-noir-700 focus-within:border-neon-cyan px-3 py-2 transition-colors">
+            <span class="text-neon-cyan text-xs mr-2 font-code">@</span>
+            <input 
+              id="input-handle"
+              type="text" 
+              placeholder="ex: K3nji_Zero" 
+              class="w-full bg-transparent text-white font-code text-xs placeholder-slate-600 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- Field: Email -->
+        <div>
+          <label class="block text-[10px] font-code text-slate-400 mb-1 uppercase tracking-wider">
+            // NETWORK_IDENTIFIER (EMAIL)
+          </label>
+          <div class="flex items-center bg-noir-950 border border-noir-700 focus-within:border-neon-pink px-3 py-2 transition-colors">
+            <span class="text-neon-pink text-xs mr-2 font-code">></span>
+            <input 
+              id="input-email"
+              type="email" 
+              required
+              value="k3nji@null-exchange.net"
+              class="w-full bg-transparent text-white font-code text-xs placeholder-slate-600 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- Field: Password -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-[10px] font-code text-slate-400 uppercase tracking-wider">
+              // CIPHER_KEY (SENHA)
+            </label>
+          </div>
+          <div class="flex items-center bg-noir-950 border border-noir-700 focus-within:border-neon-pink px-3 py-2 transition-colors">
+            <span class="text-neon-pink text-xs mr-2 font-code">#</span>
+            <input 
+              id="input-password"
+              type="password" 
+              required
+              value="supersecretpassword" 
+              class="w-full bg-transparent text-white font-code text-xs placeholder-slate-600 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- Security Tag -->
+        <div class="bg-noir-950 p-2.5 border border-noir-800 flex items-center justify-between text-[9px] font-code">
+          <span class="text-slate-400">DATABASE: SUPABASE_REST</span>
+          <span id="auth-status-tag" class="text-neon-mint">READY</span>
+        </div>
+
+        <!-- Submit Button -->
+        <button 
+          type="submit" 
+          id="btn-submit"
+          class="w-full bg-neon-pink hover:bg-neon-pink/90 text-white font-code font-bold py-3 text-xs uppercase tracking-widest chamfer-box glow-pink active:scale-95 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+        >
+          <span>AUTORIZAR_ACESSO</span>
+          <span class="font-pixel text-base">>></span>
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Bypass / Visitante -->
+    <div class="mt-4 text-center">
+      <a href="index.html" class="text-[10px] font-code text-slate-500 hover:text-neon-cyan transition-colors underline">
+        [ CONTINUAR COMO VISITANTE ANÔNIMO ]
+      </a>
+    </div>
+
+  </main>
+
+  <footer class="p-4 border-t border-noir-800/80 text-center font-code text-[9px] text-slate-600 z-30">
+    <p>PROJECT_NULL // AUTH_PROTOCOL © 2026</p>
+  </footer>
+
+  <!-- SCRIPT DE AUTENTICAÇÃO REST -->
+  <script>
+    const SUPABASE_BASE_URL = 'https://auglycutiemdklxtmcii.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_GukE9sHZ40kvvOiQ8d84kQ_Rtl14r27';
+
+    let currentMode = 'login';
+
+    function switchMode(mode) {
+      currentMode = mode;
+      const tabLogin = document.getElementById('tab-login');
+      const tabRegister = document.getElementById('tab-register');
+      const fieldHandle = document.getElementById('field-handle');
+      const btnSubmit = document.getElementById('btn-submit');
+
+      if (mode === 'register') {
+        tabRegister.className = "py-2 text-center bg-neon-cyan text-noir-950 font-bold transition-all chamfer-tag";
+        tabLogin.className = "py-2 text-center text-slate-400 hover:text-white transition-all chamfer-tag";
+        fieldHandle.classList.remove('hidden');
+        btnSubmit.innerHTML = `<span>REGISTRAR_OPERADOR</span><span class="font-pixel text-base">>></span>`;
+        btnSubmit.className = "w-full bg-neon-cyan hover:bg-neon-cyan/90 text-noir-950 font-code font-bold py-3 text-xs uppercase tracking-widest chamfer-box glow-cyan active:scale-95 transition-all flex items-center justify-center space-x-2 cursor-pointer";
+      } else {
+        tabLogin.className = "py-2 text-center bg-neon-pink text-white font-bold transition-all chamfer-tag";
+        tabRegister.className = "py-2 text-center text-slate-400 hover:text-white transition-all chamfer-tag";
+        fieldHandle.classList.add('hidden');
+        btnSubmit.innerHTML = `<span>AUTORIZAR_ACESSO</span><span class="font-pixel text-base">>></span>`;
+        btnSubmit.className = "w-full bg-neon-pink hover:bg-neon-pink/90 text-white font-code font-bold py-3 text-xs uppercase tracking-widest chamfer-box glow-pink active:scale-95 transition-all flex items-center justify-center space-x-2 cursor-pointer";
+      }
+    }
+
+    async function handleAuth(event) {
+      event.preventDefault();
+      const btnSubmit = document.getElementById('btn-submit');
+      const originalText = btnSubmit.innerHTML;
+      const statusTag = document.getElementById('auth-status-tag');
+
+      btnSubmit.innerHTML = `<span>VERIFYING_KEY...</span><span class="font-pixel text-base animate-pulse">>></span>`;
+      btnSubmit.disabled = true;
+
+      const email = document.getElementById('input-email').value.trim();
+      const password = document.getElementById('input-password').value.trim();
+      const handleInput = document.getElementById('input-handle').value.trim();
+
+      const headers = {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      };
+
+      try {
+        if (currentMode === 'login') {
+          // Busca operador por email e senha
+          const url = `${SUPABASE_BASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&password_hash=eq.${encodeURIComponent(password)}&select=*`;
+          const res = await fetch(url, { headers });
+          const users = await res.json();
+
+          if (!users || users.length === 0) {
+            throw new Error("CREDENCIAS INVÁLIDAS // Operador não localizado.");
+          }
+
+          // Grava sessão autenticada no navegador
+          localStorage.setItem('null_operative_session', JSON.stringify(users[0]));
+          statusTag.textContent = "AUTHORIZED";
+          statusTag.className = "text-neon-mint font-bold";
+
+          window.location.href = "profile.html";
+
+        } else {
+          // Criação de novo operador
+          let finalHandle = handleInput.startsWith('@') ? handleInput : `@${handleInput}`;
+          if (!handleInput) finalHandle = `@Operative_${Math.floor(Math.random() * 9000 + 1000)}`;
+
+          const newProfile = {
+            handle: finalHandle,
+            email: email,
+            password_hash: password,
+            reputation: 5.00,
+            total_transactions: 0,
+            success_rate: 100.00,
+            vault_balance: 0.00,
+            clearance_level: "LEVEL_3"
+          };
+
+          const url = `${SUPABASE_BASE_URL}/rest/v1/profiles`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(newProfile)
+          });
+
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.message || "Erro ao registrar novo operador.");
+          }
+
+          const created = await res.json();
+          localStorage.setItem('null_operative_session', JSON.stringify(created[0] || newProfile));
+          window.location.href = "profile.html";
+        }
+
+      } catch (err) {
+        alert(err.message);
+        statusTag.textContent = "AUTH_FAILED";
+        statusTag.className = "text-neon-pink font-bold";
+        btnSubmit.innerHTML = originalText;
+        btnSubmit.disabled = false;
+      }
+    }
+  </script>
+
+</body>
+</html>

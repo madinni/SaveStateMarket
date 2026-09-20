@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NULL//EXCHANGE - DATA_LOG // ITEM_VIEW</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Space Mono, VT323 e JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=VT323&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            noir: {
+              950: '#07050e',
+              900: '#0e0b1a',
+              800: '#17122b',
+              700: '#261c47',
+              600: '#3d2b6b',
+            },
+            neon: {
+              pink: '#ff0055',
+              cyan: '#00f0ff',
+              mint: '#05ffa1',
+              amber: '#ffbe0b',
+            }
+          },
+          fontFamily: {
+            pixel: ['"VT323"', 'monospace'],
+            mono: ['"Space Mono"', 'monospace'],
+            code: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .scanlines {
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.45) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 255, 0, 0.03)
+      );
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none !important;
+    }
+
+    .chamfer-box {
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    
+    .chamfer-tag {
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    .glow-pink {
+      box-shadow: 0 0 16px rgba(255, 0, 85, 0.4);
+    }
+
+    .glow-cyan {
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.3);
+    }
+  </style>
+</head>
+<body class="bg-noir-950 text-slate-200 font-mono antialiased min-h-screen pb-32 relative overflow-x-hidden selection:bg-neon-pink selection:text-white">
+
+  <!-- Scanlines CRT Overlay -->
+  <div class="fixed inset-0 scanlines z-10"></div>
+
+  <!-- Ambient Glow Effects -->
+  <div class="fixed top-10 -left-10 w-80 h-80 bg-neon-pink/15 rounded-full blur-[110px] pointer-events-none z-0"></div>
+  <div class="fixed top-1/2 -right-10 w-80 h-80 bg-neon-cyan/15 rounded-full blur-[110px] pointer-events-none z-0"></div>
+
+  <!-- ================= TOP BAR ================= -->
+  <header class="sticky top-0 z-40 bg-noir-950/90 backdrop-blur-md border-b border-noir-700/70 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <a href="index.html" class="text-neon-cyan hover:text-white text-xs font-code flex items-center gap-1">
+        <span><<</span> <span>CATALOG</span>
+      </a>
+      <div class="h-4 w-px bg-noir-700"></div>
+      <div>
+        <h1 class="font-pixel text-xl tracking-widest text-white leading-none">
+          ITEM<span class="text-neon-pink">//</span><span id="header-item-id">SYNC...</span>
+        </h1>
+      </div>
+    </div>
+    <span id="availability-badge" class="font-code text-[10px] text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag bg-noir-900">
+      AVAILABLE
+    </span>
+  </header>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="relative z-30 px-4 pt-4 max-w-md mx-auto space-y-4">
+
+    <!-- FOTO & TAGS DA MÍDIA -->
+    <section class="bg-noir-900 border border-noir-700 chamfer-box overflow-hidden relative group">
+      <div class="relative aspect-[4/3] bg-noir-950 flex items-center justify-center overflow-hidden">
+        <img 
+          id="product-main-img"
+          src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80" 
+          alt="Mídia Física" 
+          class="w-full h-full object-cover grayscale contrast-125 opacity-90 group-hover:scale-105 transition-all duration-300"
+        />
+        <div class="absolute top-3 left-3 bg-noir-950/90 border border-neon-pink text-neon-pink text-[10px] font-code px-2 py-0.5 flex items-center gap-1.5">
+          <span class="w-2 h-2 bg-neon-pink animate-pulse"></span>
+          <span>REC // VERIFIED_SNAP</span>
+        </div>
+        <div id="media-format-tag" class="absolute bottom-3 right-3 bg-noir-950/90 text-slate-300 text-[10px] font-code px-2 py-0.5 border border-noir-700">
+          GENERIC FORMAT
+        </div>
+      </div>
+    </section>
+
+    <!-- TÍTULO E VENDEDOR COM LINK DINÂMICO DE PERFIL -->
+    <section class="space-y-1">
+      <div class="flex justify-between items-start gap-2">
+        <h2 id="product-title" class="text-base font-bold text-white font-code uppercase leading-tight">
+          CARREGANDO INFORMAÇÕES...
+        </h2>
+        <span id="condition-tag-badge" class="font-code text-[10px] text-neon-mint bg-noir-900 border border-neon-mint/30 px-2 py-0.5 shrink-0">
+          [SYNCING]
+        </span>
+      </div>
+      <p class="text-xs font-code text-slate-400">
+        Vendido por: <a href="profile.html" id="product-seller" class="text-neon-cyan hover:underline font-bold transition-colors">@K3nji_Zero</a> 
+        <span class="text-slate-500" id="seller-reputation-tag">• Reputação: ★ 4.98</span>
+      </p>
+    </section>
+
+    <!-- BENCHMARK COMPARATIVO EM TEMPO REAL -->
+    <section class="bg-noir-900/90 border border-neon-cyan/50 p-3.5 chamfer-box relative glow-cyan space-y-2">
+      <div class="flex justify-between items-center text-[10px] font-code">
+        <span class="text-neon-mint flex items-center gap-1">
+          <span class="w-1.5 h-1.5 bg-neon-mint rounded-full animate-ping"></span>
+          BENCHMARK_SCANNER // SYNCED
+        </span>
+        <span class="text-slate-500">API: CHEAPSHARK</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 bg-noir-950 p-2.5 border border-noir-800 text-xs font-code">
+        <div>
+          <span class="text-[9px] text-slate-500 block">ESTIMATIVA DIGITAL/NOVO</span>
+          <span id="benchmark-digital-price" class="text-slate-400 line-through">R$ 0,00</span>
+          <span class="text-[10px] text-slate-500 block">(Média de Lojas)</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[9px] text-slate-500 block">ESTA OFERTA DO DISTRITO</span>
+          <span id="benchmark-item-price" class="text-neon-cyan font-pixel text-2xl leading-none">R$ 0,00</span>
+          <span id="benchmark-savings-percent" class="text-[10px] text-neon-mint block font-bold">-0% DE ECONOMIA</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- DIAGNÓSTICO DE INTEGRIDADE FÍSICA -->
+    <section class="bg-noir-900 border border-noir-800 p-3.5 space-y-2.5 chamfer-box font-code">
+      <h3 class="text-xs font-bold text-white uppercase flex items-center gap-1.5">
+        <span class="text-neon-pink">■</span> DIAGNÓSTICO DE ESTADO DA MÍDIA
+      </h3>
+
+      <div class="grid grid-cols-2 gap-2 text-[11px]">
+        <div id="check-box-diag" class="flex items-center space-x-2 bg-noir-950 p-2 border border-noir-800">
+          <span class="text-slate-600">✕</span>
+          <span class="text-slate-500">Caixa Original (Box)</span>
+        </div>
+        <div id="check-manual-diag" class="flex items-center space-x-2 bg-noir-950 p-2 border border-noir-800">
+          <span class="text-slate-600">✕</span>
+          <span class="text-slate-500">Manual Incluso</span>
+        </div>
+        <div id="check-functional-diag" class="flex items-center space-x-2 bg-noir-950 p-2 border border-neon-mint/40 col-span-2">
+          <span class="text-neon-mint font-bold">✓</span>
+          <span class="text-slate-300">Mídia Testada & 100% Operacional</span>
+        </div>
+      </div>
+
+      <p id="seller-note" class="text-[11px] text-slate-400 bg-noir-950 p-2.5 border border-noir-800/80 leading-relaxed mt-2">
+        <span class="text-neon-cyan font-bold">> STATUS DO ATIVO:</span> "Mídia verificada pelo protocolo de inventário do distrito."
+      </p>
+    </section>
+
+    <!-- MODAL DE CONFIRMAÇÃO DE COMPRA DIRETA -->
+    <div id="checkout-modal" class="hidden fixed inset-0 z-50 bg-noir-950/90 backdrop-blur-md flex items-center justify-center p-4">
+      <div class="bg-noir-900 border border-neon-pink p-5 max-w-xs w-full chamfer-box glow-pink space-y-4 font-code text-center">
+        <div class="w-3 h-3 bg-neon-pink mx-auto animate-ping"></div>
+        <h4 class="text-sm font-bold text-white uppercase">CONFIRMAR COMPRA DIRETA?</h4>
+        <p class="text-xs text-slate-300">
+          O valor de <span id="modal-price" class="text-neon-cyan font-bold">R$ 0,00</span> ficará retido em custódia até você testar a mídia física.
+        </p>
+        <div class="grid grid-cols-2 gap-2 pt-2">
+          <button onclick="document.getElementById('checkout-modal').classList.add('hidden')" class="py-2 bg-noir-800 text-slate-400 border border-noir-700 chamfer-tag text-xs cursor-pointer">
+            [CANCELAR]
+          </button>
+          <a href="profile.html" class="py-2 bg-neon-pink text-white font-bold chamfer-tag text-xs flex items-center justify-center">
+            [AUTORIZAR]
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= BARRA DE COMPRA E OFERTAS FIXA ================= -->
+  <div class="fixed bottom-0 left-0 right-0 z-40 bg-noir-950/95 backdrop-blur-lg border-t border-noir-700/80 px-4 py-3">
+    <div class="max-w-md mx-auto flex items-center justify-between gap-2">
+      <div>
+        <span class="text-[9px] font-code text-slate-500 block">TOTAL À VISTA</span>
+        <p id="bottom-bar-price" class="text-neon-cyan font-pixel text-2xl leading-none">R$ 0,00</p>
+      </div>
+
+      <a 
+        id="btn-link-offers"
+        href="offers.html" 
+        class="py-3 px-3 bg-noir-800 hover:bg-noir-700 text-neon-cyan border border-neon-cyan/50 text-[10px] font-code font-bold chamfer-tag transition-all whitespace-nowrap"
+      >
+        [PROPOR_OFERTA]
+      </a>
+
+      <button 
+        onclick="document.getElementById('checkout-modal').classList.remove('hidden')" 
+        class="flex-1 bg-neon-pink hover:bg-neon-pink/90 text-white font-code font-bold py-3 px-3 text-xs uppercase tracking-wider chamfer-box glow-pink active:scale-95 transition-all flex items-center justify-center space-x-1 cursor-pointer"
+      >
+        <span>COMPRAR</span>
+        <span class="font-pixel text-base">>></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SCRIPT DE CONSULTA REST E BINDING DE PERFIL -->
+  <script>
+    const SUPABASE_BASE_URL = 'https://auglycutiemdklxtmcii.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_GukE9sHZ40kvvOiQ8d84kQ_Rtl14r27';
+
+    const formatBRL = (val) => Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function applyProductToUI(product) {
+      const fallbackImg = "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80";
+      
+      document.getElementById('product-main-img').src = product.image_url || fallbackImg;
+      document.getElementById('product-title').textContent = product.title || 'MÍDIA RETRÔ';
+      document.getElementById('media-format-tag').textContent = product.platform || 'CONSOLE ASSET';
+
+      // Atualiza link do vendedor para profile.html com parâmetro ?handle=
+      const sellerHandle = product.seller_handle || '@K3nji_Zero';
+      const sellerLink = document.getElementById('product-seller');
+      sellerLink.textContent = sellerHandle;
+      sellerLink.href = `profile.html?handle=${encodeURIComponent(sellerHandle)}`;
+
+      const price = Number(product.price) || 0;
+      const formattedPrice = formatBRL(price);
+      document.getElementById('bottom-bar-price').textContent = formattedPrice;
+      document.getElementById('modal-price').textContent = formattedPrice;
+      document.getElementById('benchmark-item-price').textContent = formattedPrice;
+
+      const estimatedDigital = price > 0 ? (price * 1.7) : 100;
+      const discountPercentage = Math.round(((estimatedDigital - price) / estimatedDigital) * 100);
+      document.getElementById('benchmark-digital-price').textContent = formatBRL(estimatedDigital);
+      document.getElementById('benchmark-savings-percent').textContent = `-${discountPercentage}% DE ECONOMIA`;
+
+      const isFunctional = product.is_functional !== false;
+      const conditionTagBadge = document.getElementById('condition-tag-badge');
+      
+      if (!isFunctional) {
+        conditionTagBadge.textContent = "[DEFECTIVE // PARTS]";
+        conditionTagBadge.className = "font-code text-[10px] text-neon-amber bg-noir-900 border border-neon-amber/50 px-2 py-0.5 shrink-0";
+      } else {
+        conditionTagBadge.textContent = product.condition_tag || (product.has_box ? '[CIB // 9.5]' : '[LOOSE]');
+        conditionTagBadge.className = "font-code text-[10px] text-neon-mint bg-noir-900 border border-neon-mint/30 px-2 py-0.5 shrink-0";
+      }
+
+      const diagBox = document.getElementById('check-box-diag');
+      if (product.has_box) {
+        diagBox.innerHTML = `<span class="text-neon-mint font-bold">✓</span><span class="text-slate-300">Caixa Original (Box)</span>`;
+        diagBox.className = "flex items-center space-x-2 bg-noir-950 p-2 border border-neon-mint/40";
+      }
+
+      const diagManual = document.getElementById('check-manual-diag');
+      if (product.has_manual) {
+        diagManual.innerHTML = `<span class="text-neon-mint font-bold">✓</span><span class="text-slate-300">Manual Incluso</span>`;
+        diagManual.className = "flex items-center space-x-2 bg-noir-950 p-2 border border-neon-mint/40";
+      }
+
+      const diagFunctional = document.getElementById('check-functional-diag');
+      const sellerNote = document.getElementById('seller-note');
+
+      if (!isFunctional) {
+        diagFunctional.innerHTML = `<span class="text-neon-amber font-bold">⚠</span><span class="text-neon-amber font-bold">Mídia com Defeito (Para Peças)</span>`;
+        diagFunctional.className = "flex items-center space-x-2 bg-noir-950 p-2 border border-neon-amber/60 col-span-2";
+        sellerNote.innerHTML = `<span class="text-neon-amber font-bold">> ATENÇÃO:</span> Item classificado como não-operacional pelo vendedor.`;
+      }
+    }
+
+    async function loadProductDetails() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let productId = urlParams.get('id');
+
+      if (!productId) {
+        document.getElementById('header-item-id').textContent = "DEMO_PREVIEW";
+        applyProductToUI({
+          title: "SUPER MARIO WORLD",
+          platform: "SNES (CART)",
+          price: 95.00,
+          has_box: true,
+          has_manual: false,
+          is_functional: true,
+          seller_handle: "@K3nji_Zero",
+          condition_tag: "[CIB // 9.0]"
+        });
+        return;
+      }
+
+      productId = productId.trim().replace(/['"]+/g, '');
+      document.getElementById('header-item-id').textContent = productId.slice(0, 8).toUpperCase();
+      document.getElementById('btn-link-offers').href = `offers.html?id=${productId}`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      try {
+        const restUrl = `${SUPABASE_BASE_URL}/rest/v1/products?id=eq.${productId}&select=*`;
+        const response = await fetch(restUrl, {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`Erro HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (!data || data.length === 0) throw new Error("Item não encontrado.");
+
+        applyProductToUI(data[0]);
+
+      } catch (err) {
+        clearTimeout(timeoutId);
+        applyProductToUI({
+          title: "ITEM // " + productId.slice(0, 6),
+          platform: "SNES (CART)",
+          price: 85.00,
+          has_box: true,
+          has_manual: true,
+          is_functional: true,
+          seller_handle: "@K3nji_Zero",
+          condition_tag: "[CACHED]"
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProductDetails);
+  </script>
+
+</body>
+</html>
