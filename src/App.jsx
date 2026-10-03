@@ -1,17 +1,17 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import CRTOverlay from './components/CRTOverlay';
-import Navbar from './components/Navbar';
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import CRTOverlay from "./components/CRTOverlay";
+import Navbar from "./components/Navbar";
 
-import MarketFeed from './pages/MarketFeed';
-import ProductDetails from './pages/ProductDetails';
-import DropAsset from './pages/DropAsset';
-import NegotiationDesk from './pages/NegotiationDesk';
-import OperativeProfile from './pages/OperativeProfile';
-import AuthLogin from './pages/AuthLogin';
-import SupportTicket from './pages/SupportTicket';
-import SystemGuide from './pages/SystemGuide';
+import MarketFeed from "./pages/MarketFeed";
+import ProductDetails from "./pages/ProductDetails";
+import DropAsset from "./pages/DropAsset";
+import NegotiationDesk from "./pages/NegotiationDesk";
+import OperativeProfile from "./pages/OperativeProfile";
+import AuthLogin from "./pages/AuthLogin";
+import SupportTicket from "./pages/SupportTicket";
+import SystemGuide from "./pages/SystemGuide";
 
 export default function App() {
   return (
@@ -24,9 +24,11 @@ export default function App() {
             <Route path="/product/:id" element={<ProductDetails />} />
             <Route path="/sell" element={<DropAsset />} />
             <Route path="/offers" element={<NegotiationDesk />} />
+            <Route path="/negotiation" element={<NegotiationDesk />} />
             <Route path="/profile" element={<OperativeProfile />} />
             <Route path="/login" element={<AuthLogin />} />
             <Route path="/ticket" element={<SupportTicket />} />
+            <Route path="/support" element={<SupportTicket />} />
             <Route path="/help" element={<SystemGuide />} />
           </Routes>
           <Navbar />

@@ -112,5 +112,142 @@
       "badge": "[VERIFIED_ESCROW]"
     }
   ],
-  "tickets": []
+  "tickets": [
+    {
+      "id": "TCK-MUSS2R4E",
+      "author_id": "7d8cd670-0000-0000-0000-000000000000",
+      "author_handle": "@K3nji_Zero",
+      "category": "SYSTEM_BUG",
+      "priority": "CRITICAL",
+      "subject": "aaaaaa",
+      "description": "aaaaaaaaaaaaaaaa",
+      "status": "OPEN",
+      "created_at": "2026-10-03T19:21:30.830Z"
+    }
+  ],
+  "offers": [
+    {
+      "id": "OFF-101",
+      "product_id": "PROD-01",
+      "product_title": "Chrono Trigger (Cartucho SNES)",
+      "original_price": 350,
+      "offered_price": 200,
+      "buyer_id": "USER-2",
+      "buyer_handle": "@RetroCollector",
+      "seller_id": "USER-1",
+      "status": "ACCEPTED",
+      "updated_at": "2026-10-03T19:30:20.585Z"
+    },
+    {
+      "id": "OFF-MUSSLE5D",
+      "product_id": "44dc661e-4050-415b-afc5-19b3cc752834",
+      "product_title": "Minecraft",
+      "original_price": 85,
+      "offered_price": 50,
+      "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
+      "buyer_handle": "@Lume",
+      "seller_id": "USER-1",
+      "status": "REJECTED",
+      "last_action_by": "8f31c92a-0000-0000-0000-000000000001",
+      "updated_at": "2026-10-03T19:36:17.225Z"
+    }
+  ],
+  "messages": [
+    {
+      "id": "MSG-01",
+      "offer_id": "OFF-101",
+      "sender_id": "USER-2",
+      "sender_handle": "@RetroCollector",
+      "text": "Aceita R$ 300 à vista se eu buscar em mãos?",
+      "timestamp": "2026-10-03T16:01:00.000Z"
+    },
+    {
+      "id": "MSG-MUSSDG38",
+      "offer_id": "OFF-101",
+      "sender_id": "7d8cd670-0000-0000-0000-000000000000",
+      "sender_handle": "@K3nji_Zero",
+      "text": "SALVE PAI ACEITO SS",
+      "timestamp": "2026-10-03T19:29:49.748Z"
+    },
+    {
+      "id": "SYS-MUSSDOZR",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para REJECTED",
+      "timestamp": "2026-10-03T19:30:01.287Z"
+    },
+    {
+      "id": "SYS-MUSSDS0O",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para ACCEPTED",
+      "timestamp": "2026-10-03T19:30:05.208Z"
+    },
+    {
+      "id": "SYS-MUSSDT32",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para REJECTED",
+      "timestamp": "2026-10-03T19:30:06.590Z"
+    },
+    {
+      "id": "SYS-MUSSDTSH",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para ACCEPTED",
+      "timestamp": "2026-10-03T19:30:07.505Z"
+    },
+    {
+      "id": "SYS-MUSSDX1Y",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Contraproposta enviada no valor de R$ 200",
+      "timestamp": "2026-10-03T19:30:11.734Z"
+    },
+    {
+      "id": "SYS-MUSSDYPY",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para REJECTED",
+      "timestamp": "2026-10-03T19:30:13.894Z"
+    },
+    {
+      "id": "SYS-MUSSE1UI",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Contraproposta enviada no valor de R$ 200",
+      "timestamp": "2026-10-03T19:30:17.946Z"
+    },
+    {
+      "id": "SYS-MUSSE3WT",
+      "offer_id": "OFF-101",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Estado alterado para ACCEPTED",
+      "timestamp": "2026-10-03T19:30:20.621Z"
+    },
+    {
+      "id": "MSG-MUSSLFQR",
+      "offer_id": "OFF-MUSSLE5D",
+      "sender_id": "8f31c92a-0000-0000-0000-000000000001",
+      "sender_handle": "@Lume",
+      "text": "Proposta enviada no valor de R$ 50.00",
+      "timestamp": "2026-10-03T19:36:02.547Z"
+    },
+    {
+      "id": "SYS-MUSSLSOL",
+      "offer_id": "OFF-MUSSLE5D",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Proposta RECUSADA por @Lume",
+      "timestamp": "2026-10-03T19:36:19.317Z"
+    }
+  ]
 }

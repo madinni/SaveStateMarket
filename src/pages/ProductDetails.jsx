@@ -1,178 +1,426 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { API_URL } from '../context/AuthContext';
+// src/pages/ProductDetails.jsx
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import Header from "../components/Header";
+import { useAuth, API_URL } from "../context/AuthContext";
 
 export default function ProductDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [product, setProduct] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Estados dos Modais de Negociação / Compra
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [offerPrice, setOfferPrice] = useState("");
+  const [initialMsg, setInitialMsg] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/products/${id}`)
-      .then(res => res.json())
-      .then(data => {
+    const fetchProduct = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        let response = await fetch(`${API_URL}/products/${id}`);
+
+        if (!response.ok) {
+          const listRes = await fetch(`${API_URL}/products`);
+          if (!listRes.ok)
+            throw new Error("Falha ao conectar com o banco de dados.");
+          const allProducts = await listRes.json();
+          const found = allProducts.find((p) => String(p.id) === String(id));
+
+          if (!found) throw new Error(`Produto #${id} não localizado.`);
+          setProduct(found);
+          setOfferPrice(found.price || found.preco || "");
+          return;
+        }
+
+        const data = await response.json();
         setProduct(data);
+        setOfferPrice(data.price || data.preco || "");
+      } catch (err) {
+        console.error("[PRODUCT_FETCH_ERROR]:", err);
+        setError(err.message);
+      } finally {
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      }
+    };
+
+    if (id) fetchProduct();
   }, [id]);
 
-  const formatBRL = (val) => Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  // Mapeamento defensivo do produto
+  const productTitle = product?.title || product?.name || "Mídia Retrô";
+  const productPrice = product?.price ?? 0;
+  const productImage = product?.image_url || product?.image || "";
+  const productPlatform = product?.platform || "RETRO";
+  const sellerHandle = product?.seller_handle || "@Operador";
+  const sellerId = product?.seller_id || "USER-1";
+
+  // Extração de propriedades técnicas retrô (presentes no db.json)
+  const conditionTag = product?.condition_tag || null;
+  const hasBox = product?.has_box ?? false;
+  const hasManual = product?.has_manual ?? false;
+  const isFunctional = product?.is_functional ?? true;
+
+  // Descrição dinâmica caso o campo 'description' não exista no JSON
+  const dynamicDescription =
+    product?.description ||
+    product?.descricao ||
+    [
+      conditionTag ? `ESTADO DE CONSERVAÇÃO: ${conditionTag}` : null,
+      hasBox
+        ? "Inclui caixa original do lote"
+        : "Apenas o cartucho/mídia (Loose)",
+      hasManual
+        ? "Acompanha manual de instruções impresso"
+        : "Sem manual incluso",
+      isFunctional
+        ? "Item 100% testado e funcional"
+        : "Necessita de reparos / manutenção",
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+  const currentUserId = user?.id || "GUEST_USER";
+  const isOwner =
+    product &&
+    (String(sellerId) === String(currentUserId) ||
+      sellerHandle === user?.handle);
+
+  // Criar Proposta
+  const handleCreateOffer = async (e) => {
+    e.preventDefault();
+    if (isOwner || processing || !offerPrice) return;
+
+    setProcessing(true);
+    const offerId = `OFF-${Date.now().toString(36).toUpperCase()}`;
+
+    const offerPayload = {
+      id: offerId,
+      product_id: product.id,
+      product_title: productTitle,
+      original_price: Number(productPrice),
+      offered_price: Number(offerPrice),
+      buyer_id: currentUserId,
+      buyer_handle: user?.handle || "@Visitante",
+      seller_id: sellerId,
+      status: "PENDING",
+      last_action_by: currentUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const resOffer = await fetch(`${API_URL}/offers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(offerPayload),
+      });
+      if (!resOffer.ok) throw new Error("Falha ao registrar proposta");
+
+      const initialText =
+        initialMsg.trim() ||
+        `Proposta enviada no valor de R$ ${Number(offerPrice).toFixed(2)}`;
+      await fetch(`${API_URL}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `MSG-${Date.now().toString(36).toUpperCase()}`,
+          offer_id: offerId,
+          sender_id: currentUserId,
+          sender_handle: user?.handle || "@Visitante",
+          text: initialText,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      navigate("/offers");
+    } catch (err) {
+      console.error("[CREATE_OFFER_ERROR]:", err);
+      alert("Erro ao iniciar negociação.");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Compra Direta
+  const handleDirectBuy = async () => {
+    if (isOwner || processing) return;
+
+    if (
+      !window.confirm(
+        `Confirmar compra imediata de "${productTitle}" por R$ ${productPrice}?`,
+      )
+    )
+      return;
+
+    setProcessing(true);
+    const offerId = `OFF-${Date.now().toString(36).toUpperCase()}`;
+
+    const offerPayload = {
+      id: offerId,
+      product_id: product.id,
+      product_title: productTitle,
+      original_price: Number(productPrice),
+      offered_price: Number(productPrice),
+      buyer_id: currentUserId,
+      buyer_handle: user?.handle || "@Visitante",
+      seller_id: sellerId,
+      status: "ACCEPTED",
+      last_action_by: currentUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await fetch(`${API_URL}/offers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(offerPayload),
+      });
+
+      await fetch(`${API_URL}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `SYS-${Date.now().toString(36).toUpperCase()}`,
+          offer_id: offerId,
+          sender_id: "SYSTEM",
+          sender_handle: "PROTOCOL_BOT",
+          text: `[SISTEMA]: Compra direta confirmada no valor de R$ ${productPrice}.`,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      navigate("/offers");
+    } catch (err) {
+      console.error("[DIRECT_BUY_ERROR]:", err);
+      alert("Erro ao processar compra direta.");
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   if (loading) {
-    return <div className="p-10 text-center font-code text-neon-cyan">LOADING_ITEM_DATA...</div>;
+    return (
+      <div className="min-h-screen bg-noir-950 text-slate-400 font-code flex items-center justify-center p-8">
+        <span className="animate-pulse tracking-widest text-xs">
+          // CARREGANDO_DOSSIÊ_DE_MÍDIA...
+        </span>
+      </div>
+    );
   }
 
-  if (!product) {
-    return <div className="p-10 text-center font-code text-neon-pink">ITEM_NOT_FOUND // 404</div>;
+  if (error || !product) {
+    return (
+      <div className="min-h-screen bg-noir-950 font-code p-8 text-center text-xs space-y-4">
+        <div className="bg-noir-900 border-2 border-neon-pink p-4 chamfer-box text-neon-pink max-w-md mx-auto">
+          ⚠ {error || "REGISTRO DE PRODUTO NÃO ENCONTRADO"}
+        </div>
+        <Link
+          to="/"
+          className="inline-block text-neon-cyan hover:underline font-bold"
+        >
+          &lt;&lt; VOLTAR AO CATÁLOGO
+        </Link>
+      </div>
+    );
   }
-
-  const price = Number(product.price) || 0;
-  const estimatedDigital = price > 0 ? (price * 1.7) : 100;
-  const discount = Math.round(((estimatedDigital - price) / estimatedDigital) * 100);
 
   return (
-    <div className="min-h-screen pb-32 text-slate-200">
-      <header className="sticky top-0 z-40 bg-noir-950/90 backdrop-blur-md border-b border-noir-700/70 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <Link to="/" className="text-neon-cyan hover:text-white text-xs font-code flex items-center gap-1">
-            &lt;&lt; CATALOG
-          </Link>
-          <div className="h-4 w-px bg-noir-700"></div>
-          <h1 className="font-pixel text-xl tracking-widest text-white leading-none">
-            ITEM<span className="text-neon-pink">//</span>{String(product.id).slice(0, 8).toUpperCase()}
-          </h1>
-        </div>
-        <span className="font-code text-[10px] text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag bg-noir-900">
-          AVAILABLE
-        </span>
-      </header>
+    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+      <Header
+        title="ASSET"
+        titleHighlight="DOSSIER"
+        subtitle="IDENTIFICAÇÃO DE MÍDIA // DOSSIÊ TÉCNICO"
+        backLink="/"
+        backText="<< FEED"
+      />
 
-      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
-        {/* SNAP */}
-        <div className="bg-noir-900 border border-noir-700 chamfer-box overflow-hidden relative">
-          <div className="relative aspect-[4/3] bg-noir-950 flex items-center justify-center">
-            <img 
-              src={product.image_url} 
-              alt={product.title} 
-              className="w-full h-full object-cover grayscale contrast-125 opacity-90"
-            />
-            <div className="absolute top-3 left-3 bg-noir-950/90 border border-neon-pink text-neon-pink text-[10px] font-code px-2 py-0.5 flex items-center gap-1.5">
-              <span className="w-2 h-2 bg-neon-pink animate-pulse"></span>
-              <span>REC // VERIFIED_SNAP</span>
-            </div>
-            <div className="absolute bottom-3 right-3 bg-noir-950/90 text-slate-300 text-[10px] font-code px-2 py-0.5 border border-noir-700">
-              {product.platform}
-            </div>
-          </div>
-        </div>
-
-        {/* TITULO E VENDEDOR */}
-        <div className="space-y-1">
-          <div className="flex justify-between items-start gap-2">
-            <h2 className="text-base font-bold text-white font-code uppercase leading-tight">
-              {product.title}
-            </h2>
-            <span className="font-code text-[10px] text-neon-mint bg-noir-900 border border-neon-mint/30 px-2 py-0.5 shrink-0">
-              {product.condition_tag || '[USED]'}
+      <main className="max-w-2xl mx-auto px-4 pt-4 space-y-4">
+        <div className="bg-noir-900 border-2 border-slate-700 p-5 chamfer-box space-y-4 shadow-xl">
+          {/* EXIBIÇÃO DE IMAGEM */}
+          <div className="relative border-2 border-slate-800 bg-noir-950 h-64 flex items-center justify-center overflow-hidden">
+            {productImage ? (
+              <img
+                src={productImage}
+                alt={productTitle}
+                className="max-h-full object-contain p-2"
+              />
+            ) : (
+              <span className="text-slate-600 text-xs">
+                // NENHUMA_IMAGEM_DISPONÍVEL
+              </span>
+            )}
+            <span className="absolute top-2 right-2 bg-noir-900 border border-slate-700 text-neon-cyan text-[10px] px-2.5 py-1 font-bold">
+              {productPlatform}
             </span>
           </div>
-          <p className="text-xs font-code text-slate-400">
-            Vendido por: <Link to={`/profile?handle=${encodeURIComponent(product.seller_handle)}`} className="text-neon-cyan hover:underline font-bold">
-              {product.seller_handle}
-            </Link>
-          </p>
-        </div>
 
-        {/* BENCHMARK */}
-        <div className="bg-noir-900/90 border border-neon-cyan/50 p-3.5 chamfer-box glow-cyan space-y-2 font-code">
-          <div className="flex justify-between items-center text-[10px]">
-            <span className="text-neon-mint flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-neon-mint rounded-full animate-ping"></span>
-              BENCHMARK_SCANNER // SYNCED
+          {/* TÍTULO E PREÇO */}
+          <div>
+            <div className="flex justify-between items-start gap-2">
+              <h1 className="text-lg font-black text-white">{productTitle}</h1>
+              <span className="text-lg font-extrabold text-neon-mint whitespace-nowrap">
+                R$ {Number(productPrice).toFixed(2)}
+              </span>
+            </div>
+
+            {/* PAINEL DE METADADOS RETRÔ (TAGS TÉCNICAS) */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {conditionTag && (
+                <span className="bg-noir-950 border border-neon-pink text-neon-pink text-[10px] px-2 py-1 font-bold">
+                  {conditionTag}
+                </span>
+              )}
+              <span
+                className={`border text-[10px] px-2 py-1 font-bold ${
+                  hasBox
+                    ? "bg-noir-950 border-neon-mint text-neon-mint"
+                    : "bg-noir-950 border-slate-800 text-slate-500"
+                }`}
+              >
+                {hasBox ? "[+CAIXA ORIGINAL]" : "[-SEM CAIXA]"}
+              </span>
+              <span
+                className={`border text-[10px] px-2 py-1 font-bold ${
+                  hasManual
+                    ? "bg-noir-950 border-neon-mint text-neon-mint"
+                    : "bg-noir-950 border-slate-800 text-slate-500"
+                }`}
+              >
+                {hasManual ? "[+MANUAL]" : "[-SEM MANUAL]"}
+              </span>
+              <span
+                className={`border text-[10px] px-2 py-1 font-bold ${
+                  isFunctional
+                    ? "bg-noir-950 border-neon-cyan text-neon-cyan"
+                    : "bg-noir-950 border-neon-pink text-neon-pink"
+                }`}
+              >
+                {isFunctional ? "[100% OPERACIONAL]" : "[REQUER REPARO]"}
+              </span>
+            </div>
+
+            {/* RELATÓRIO / DESCRIÇÃO DEDUZIDA */}
+            <p className="text-xs text-slate-300 mt-3 leading-relaxed bg-noir-950 p-3 border border-slate-800">
+              {dynamicDescription}
+            </p>
+          </div>
+
+          {/* VENDEDOR */}
+          <div className="bg-noir-950 p-3 border border-slate-800 text-xs flex justify-between items-center">
+            <span className="text-slate-400">
+              OPERADOR ANUNCIANTE:{" "}
+              <strong className="text-neon-cyan">{sellerHandle}</strong>
             </span>
-            <span className="text-slate-500">API: CHEAPSHARK</span>
+            {isOwner && (
+              <span className="bg-neon-pink/20 text-neon-pink border border-neon-pink px-2 py-0.5 text-[9px] font-bold">
+                SEU ANÚNCIO
+              </span>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 bg-noir-950 p-2.5 border border-noir-800 text-xs">
-            <div>
-              <span className="text-[9px] text-slate-500 block">ESTIMATIVA DIGITAL</span>
-              <span className="text-slate-400 line-through">{formatBRL(estimatedDigital)}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-[9px] text-slate-500 block">ESTA OFERTA</span>
-              <span className="text-neon-cyan font-pixel text-2xl leading-none">{formatBRL(price)}</span>
-              <span className="text-[10px] text-neon-mint block font-bold">-{discount}% DE ECONOMIA</span>
-            </div>
-          </div>
-        </div>
 
-        {/* DIAGNOSTICO */}
-        <div className="bg-noir-900 border border-noir-800 p-3.5 space-y-2 chamfer-box font-code">
-          <h3 className="text-xs font-bold text-white uppercase flex items-center gap-1.5">
-            <span className="text-neon-pink">■</span> DIAGNÓSTICO DE ESTADO DA MÍDIA
-          </h3>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="flex items-center space-x-2 bg-noir-950 p-2 border border-noir-800">
-              <span className={product.has_box ? "text-neon-mint font-bold" : "text-slate-600"}>
-                {product.has_box ? "✓" : "✕"}
-              </span>
-              <span className="text-slate-300">Caixa Original (Box)</span>
-            </div>
-            <div className="flex items-center space-x-2 bg-noir-950 p-2 border border-noir-800">
-              <span className={product.has_manual ? "text-neon-mint font-bold" : "text-slate-600"}>
-                {product.has_manual ? "✓" : "✕"}
-              </span>
-              <span className="text-slate-300">Manual Incluso</span>
-            </div>
-            <div className={`flex items-center space-x-2 bg-noir-950 p-2 border col-span-2 ${product.is_functional ? 'border-neon-mint/40 text-slate-300' : 'border-neon-amber/60 text-neon-amber'}`}>
-              <span className="font-bold">{product.is_functional ? "✓" : "⚠"}</span>
-              <span>{product.is_functional ? "Mídia Testada & 100% Operacional" : "Mídia com Defeito (Para Peças)"}</span>
-            </div>
+          {/* AÇÕES */}
+          <div className="pt-2">
+            {isOwner ? (
+              <div className="bg-noir-950 border border-slate-800 p-3 text-center text-xs text-slate-500 font-bold">
+                ⚠ VOCÊ É O PROPRIETÁRIO DESTE ANÚNCIO. AÇÕES DE COMPRA
+                BLOQUEADAS.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleDirectBuy}
+                  disabled={processing}
+                  className="py-3 bg-neon-mint hover:bg-neon-mint/90 text-noir-950 font-black text-xs uppercase chamfer-box tracking-wider cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {processing ? "PROCESSANDO..." : "COMPRA DIRETA"}
+                </button>
+
+                <button
+                  onClick={() => setShowOfferModal(true)}
+                  disabled={processing}
+                  className="py-3 bg-noir-800 border-2 border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 font-black text-xs uppercase chamfer-box tracking-wider cursor-pointer disabled:opacity-50"
+                >
+                  ENVIAR PROPOSTA
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </main>
 
-      {/* COMPRA FIXA */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-noir-950/95 backdrop-blur-lg border-t border-noir-700/80 px-4 py-3">
-        <div className="max-w-md mx-auto flex items-center justify-between gap-2">
-          <div>
-            <span className="text-[9px] font-code text-slate-500 block">TOTAL À VISTA</span>
-            <p className="text-neon-cyan font-pixel text-2xl leading-none">{formatBRL(price)}</p>
-          </div>
-          <Link 
-            to={`/offers?id=${product.id}`}
-            className="py-3 px-3 bg-noir-800 hover:bg-noir-700 text-neon-cyan border border-neon-cyan/50 text-[10px] font-code font-bold chamfer-tag transition-all"
+      {/* MODAL DE PROPOSTA */}
+      {showOfferModal && (
+        <div className="fixed inset-0 z-50 bg-noir-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <form
+            onSubmit={handleCreateOffer}
+            className="bg-noir-900 border-2 border-neon-cyan p-5 max-w-sm w-full chamfer-box space-y-4 shadow-2xl"
           >
-            [PROPOR_OFERTA]
-          </Link>
-          <button 
-            onClick={() => setModalOpen(true)}
-            className="flex-1 bg-neon-pink hover:bg-neon-pink/90 text-white font-code font-bold py-3 px-3 text-xs uppercase chamfer-box glow-pink"
-          >
-            COMPRAR &gt;&gt;
-          </button>
-        </div>
-      </div>
+            <h3 className="text-xs font-black text-white uppercase tracking-wider">
+              ABRIR CANAL // {productTitle}
+            </h3>
 
-      {/* MODAL */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-noir-950/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-noir-900 border border-neon-pink p-5 max-w-xs w-full chamfer-box glow-pink space-y-4 font-code text-center">
-            <div className="w-3 h-3 bg-neon-pink mx-auto animate-ping"></div>
-            <h4 className="text-sm font-bold text-white uppercase">CONFIRMAR COMPRA DIRETA?</h4>
-            <p className="text-xs text-slate-300">
-              O valor de <span className="text-neon-cyan font-bold">{formatBRL(price)}</span> ficará retido em custódia até você testar a mídia física.
-            </p>
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button onClick={() => setModalOpen(false)} className="py-2 bg-noir-800 text-slate-400 border border-noir-700 chamfer-tag text-xs">
-                [CANCELAR]
-              </button>
-              <Link to="/profile" className="py-2 bg-neon-pink text-white font-bold chamfer-tag text-xs flex items-center justify-center">
-                [AUTORIZAR]
-              </Link>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-1">
+                VALOR DO ANÚNCIO
+              </label>
+              <input
+                type="text"
+                disabled
+                value={`R$ ${Number(productPrice).toFixed(2)}`}
+                className="w-full bg-noir-950 border border-slate-800 p-2 text-slate-500 text-xs font-bold"
+              />
             </div>
-          </div>
+
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-1">
+                SUA PROPOSTA (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={offerPrice}
+                onChange={(e) => setOfferPrice(e.target.value)}
+                className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs font-bold focus:outline-none focus:border-neon-cyan"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-1">
+                MENSAGEM INICIAL (OPCIONAL)
+              </label>
+              <textarea
+                rows="2"
+                value={initialMsg}
+                onChange={(e) => setInitialMsg(e.target.value)}
+                placeholder="Ex: Aceita entregar em mãos?"
+                className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-cyan resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowOfferModal(false)}
+                className="flex-1 py-2 bg-noir-800 text-slate-300 border border-slate-600 text-xs font-bold"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="submit"
+                disabled={processing || !offerPrice}
+                className="flex-1 py-2 bg-neon-cyan text-noir-950 text-xs font-black disabled:opacity-50"
+              >
+                {processing ? "ENVIANDO..." : "INICIAR CHAT"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
