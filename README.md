@@ -105,6 +105,7 @@ npm run full-dev
 ## 👥 Equipe de Desenvolvimento
 
 Projeto desenvolvido para fins acadêmicos como requisito de avaliação da disciplina de Programação Web:
+Obs: Os pushs foram feitos somente por uma pessoa pois utilizamos o Live-share para codar juntos.
 
 - **Desenvolvedor 1** -  Luciano Mello
 - **Desenvolvedor 2** -  Matheus Dinis
