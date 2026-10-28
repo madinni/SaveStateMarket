@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import Header from "../components/Header";
 import { useAuth, API_URL } from "../context/AuthContext";
+import OwnerActions from "../components/OwnerActions";
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -327,10 +328,7 @@ export default function ProductDetails() {
           {/* AÇÕES */}
           <div className="pt-2">
             {isOwner ? (
-              <div className="bg-noir-950 border border-slate-800 p-3 text-center text-xs text-slate-500 font-bold">
-                ⚠ VOCÊ É O PROPRIETÁRIO DESTE ANÚNCIO. AÇÕES DE COMPRA
-                BLOQUEADAS.
-              </div>
+              <OwnerActions product={product} />
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <button

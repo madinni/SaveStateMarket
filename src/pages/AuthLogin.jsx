@@ -1,47 +1,145 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth, API_URL } from '../context/AuthContext';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { useAuth } from "../context/AuthContext";
+import { profilesApi } from "../services/api";
+import { loginSchema, registerSchema } from "../schemas";
+import FieldError from "../components/FieldError";
+
+const inputClass =
+  "w-full bg-noir-950 border border-noir-700 px-3 py-2 text-white focus:outline-none";
+
+async function authenticate({ email, password }) {
+  const users = await profilesApi.findByEmail(email);
+  const found = users.find((u) => u.password_hash === password);
+  if (!found) throw new Error("Credenciais inválidas.");
+  return found;
+}
+
+async function registerOperative({ handle, email, password }) {
+  const finalHandle = handle.startsWith("@") ? handle : `@${handle}`;
+
+  const [sameEmail, sameHandle] = await Promise.all([
+    profilesApi.findByEmail(email),
+    profilesApi.findByHandle(finalHandle),
+  ]);
+  if (sameEmail.length > 0) throw new Error("Este e-mail já está cadastrado.");
+  if (sameHandle.length > 0) throw new Error("Este handle já está em uso.");
+
+  return profilesApi.create({
+    handle: finalHandle,
+    email,
+    password_hash: password,
+    reputation: 5.0,
+    total_transactions: 0,
+    success_rate: 100,
+    vault_balance: 0,
+    clearance_level: "LEVEL_3",
+  });
+}
+
+function LoginForm({ onSuccess }) {
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+  const mutation = useMutation({ mutationFn: authenticate, onSuccess });
+
+  return (
+    <form
+      onSubmit={handleSubmit((values) => mutation.mutate(values))}
+      noValidate
+      className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-pink space-y-4 font-code text-xs"
+    >
+      <div>
+        <label htmlFor="login-email" className="block text-[10px] text-slate-400 mb-1">
+          // NETWORK_IDENTIFIER (EMAIL)
+        </label>
+        <input id="login-email" type="email" autoComplete="email" {...register("email")}
+          className={`${inputClass} focus:border-neon-pink`} />
+        <FieldError error={errors.email} />
+      </div>
+      <div>
+        <label htmlFor="login-password" className="block text-[10px] text-slate-400 mb-1">
+          // CIPHER_KEY (SENHA)
+        </label>
+        <input id="login-password" type="password" autoComplete="current-password" {...register("password")}
+          className={`${inputClass} focus:border-neon-pink`} />
+        <FieldError error={errors.password} />
+      </div>
+
+      {mutation.isError && (
+        <p role="alert" className="text-neon-pink font-bold">⚠ {mutation.error.message}</p>
+      )}
+
+      <button type="submit" disabled={mutation.isPending}
+        className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-pink text-white glow-pink disabled:opacity-50">
+        {mutation.isPending ? "AUTENTICANDO..." : "AUTORIZAR_ACESSO >>"}
+      </button>
+    </form>
+  );
+}
+
+function RegisterForm({ onSuccess }) {
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { handle: "", email: "", password: "" },
+  });
+  const mutation = useMutation({ mutationFn: registerOperative, onSuccess });
+
+  return (
+    <form
+      onSubmit={handleSubmit((values) => mutation.mutate(values))}
+      noValidate
+      className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-cyan space-y-4 font-code text-xs"
+    >
+      <div>
+        <label htmlFor="reg-handle" className="block text-[10px] text-slate-400 mb-1">
+          // OPERATIVE_TAG (HANDLE)
+        </label>
+        <input id="reg-handle" type="text" placeholder="ex: K3nji_Zero" {...register("handle")}
+          className={`${inputClass} focus:border-neon-cyan`} />
+        <FieldError error={errors.handle} />
+      </div>
+      <div>
+        <label htmlFor="reg-email" className="block text-[10px] text-slate-400 mb-1">
+          // NETWORK_IDENTIFIER (EMAIL)
+        </label>
+        <input id="reg-email" type="email" autoComplete="email" {...register("email")}
+          className={`${inputClass} focus:border-neon-cyan`} />
+        <FieldError error={errors.email} />
+      </div>
+      <div>
+        <label htmlFor="reg-password" className="block text-[10px] text-slate-400 mb-1">
+          // CIPHER_KEY (SENHA)
+        </label>
+        <input id="reg-password" type="password" autoComplete="new-password" {...register("password")}
+          className={`${inputClass} focus:border-neon-cyan`} />
+        <FieldError error={errors.password} />
+      </div>
+
+      {mutation.isError && (
+        <p role="alert" className="text-neon-pink font-bold">⚠ {mutation.error.message}</p>
+      )}
+
+      <button type="submit" disabled={mutation.isPending}
+        className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-cyan text-noir-950 glow-cyan disabled:opacity-50">
+        {mutation.isPending ? "REGISTRANDO..." : "CRIAR_OPERADOR >>"}
+      </button>
+    </form>
+  );
+}
 
 export default function AuthLogin() {
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState('k3nji@null-exchange.net');
-  const [password, setPassword] = useState('supersecretpassword');
-  const [handle, setHandle] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    try {
-      if (isRegister) {
-        const finalHandle = handle.startsWith('@') ? handle : `@${handle || 'Operative'}`;
-        const newProf = {
-          handle: finalHandle,
-          email,
-          password_hash: password,
-          reputation: 5.0,
-          total_transactions: 0,
-          success_rate: 100,
-          vault_balance: 0,
-          clearance_level: "LEVEL_3"
-        };
-        const res = await fetch(`${API_URL}/profiles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newProf)
-        });
-        const created = await res.json();
-        login(created);
-      } else {
-        const res = await fetch(`${API_URL}/profiles?email=${encodeURIComponent(email)}&password_hash=${encodeURIComponent(password)}`);
-        const users = await res.json();
-        if (users.length === 0) throw new Error("Credenciais inválidas.");
-        login(users[0]);
-      }
-      navigate('/profile');
-    } catch (err) {
-      alert(err.message || "Falha de autenticação.");
-    }
+  const handleSuccess = (operative) => {
+    login(operative);
+    navigate("/profile");
   };
 
   return (
@@ -62,61 +160,21 @@ export default function AuthLogin() {
         </div>
 
         <div className="grid grid-cols-2 gap-1 bg-noir-900 p-1 border border-noir-700 font-code text-xs">
-          <button 
-            onClick={() => setIsRegister(false)} 
-            className={`py-2 chamfer-tag font-bold ${!isRegister ? 'bg-neon-pink text-white glow-pink' : 'text-slate-400'}`}
-          >
+          <button type="button" onClick={() => setIsRegister(false)}
+            className={`py-2 chamfer-tag font-bold ${!isRegister ? "bg-neon-pink text-white glow-pink" : "text-slate-400"}`}>
             [LOGIN]
           </button>
-          <button 
-            onClick={() => setIsRegister(true)} 
-            className={`py-2 chamfer-tag font-bold ${isRegister ? 'bg-neon-cyan text-noir-950 glow-cyan' : 'text-slate-400'}`}
-          >
+          <button type="button" onClick={() => setIsRegister(true)}
+            className={`py-2 chamfer-tag font-bold ${isRegister ? "bg-neon-cyan text-noir-950 glow-cyan" : "text-slate-400"}`}>
             [NOVO_OPERADOR]
           </button>
         </div>
 
-        <form onSubmit={handleAuth} className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-pink space-y-4 font-code text-xs">
-          {isRegister && (
-            <div>
-              <label className="block text-[10px] text-slate-400 mb-1">// OPERATIVE_TAG (HANDLE)</label>
-              <input 
-                type="text" 
-                placeholder="ex: K3nji_Zero"
-                value={handle} 
-                onChange={(e) => setHandle(e.target.value)} 
-                className="w-full bg-noir-950 border border-noir-700 px-3 py-2 text-white focus:outline-none focus:border-neon-cyan"
-              />
-            </div>
-          )}
-          <div>
-            <label className="block text-[10px] text-slate-400 mb-1">// NETWORK_IDENTIFIER (EMAIL)</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required
-              className="w-full bg-noir-950 border border-noir-700 px-3 py-2 text-white focus:outline-none focus:border-neon-pink"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] text-slate-400 mb-1">// CIPHER_KEY (SENHA)</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required
-              className="w-full bg-noir-950 border border-noir-700 px-3 py-2 text-white focus:outline-none focus:border-neon-pink"
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            className={`w-full py-3 font-bold uppercase chamfer-box tracking-widest ${isRegister ? 'bg-neon-cyan text-noir-950 glow-cyan' : 'bg-neon-pink text-white glow-pink'}`}
-          >
-            AUTORIZAR_ACESSO &gt;&gt;
-          </button>
-        </form>
+        {isRegister ? (
+          <RegisterForm onSuccess={handleSuccess} />
+        ) : (
+          <LoginForm onSuccess={handleSuccess} />
+        )}
       </main>
 
       <footer className="text-center font-code text-[9px] text-slate-600 pt-4">
