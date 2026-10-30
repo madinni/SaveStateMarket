@@ -43,3 +43,45 @@ export const productSchema = z.object({
   has_manual: z.boolean(),
   is_functional: z.boolean(),
 });
+
+export const reviewSchema = z.object({
+  comment: z
+    .string()
+    .trim()
+    .min(3, "O comentário deve ter pelo menos 3 caracteres.")
+    .max(300, "O comentário deve ter no máximo 300 caracteres."),
+  rating: z.coerce.number().int().min(1).max(5),
+});
+
+export const TICKET_CATEGORIES = [
+  { value: "MEDIA_DEFECT", label: "Mídia com Defeito / Leitura Falhou" },
+  { value: "ESCROW_LOCK", label: "Retenção de Saldo / Custódia Presa" },
+  { value: "PRICE_DISCREPANCY", label: "Divergência de Valor no Anúncio" },
+  { value: "FRAUD_REPORT", label: "Suspeita de Fraude / Conduta Imprópria" },
+  { value: "SYSTEM_BUG", label: "Anomalia na Interface / Bug Técnico" },
+];
+
+export const ticketSchema = z.object({
+  category: z.enum(TICKET_CATEGORIES.map((c) => c.value)),
+  priority: z.enum(["LOW", "HIGH", "CRITICAL"]),
+  subject: z.string().trim().min(5, "O assunto deve ter pelo menos 5 caracteres.").max(80),
+  description: z
+    .string()
+    .trim()
+    .min(15, "O relatório detalhado deve ter pelo menos 15 caracteres."),
+});
+
+export const priceSchema = z.object({
+  price: z.coerce
+    .number({ invalid_type_error: "Informe um valor válido." })
+    .positive("O valor deve ser maior que zero.")
+    .max(100000, "O valor máximo é R$ 100.000,00."),
+});
+
+export const offerSchema = priceSchema.extend({
+  message: z.string().trim().max(200, "Máximo de 200 caracteres.").optional(),
+});
+
+export const chatSchema = z.object({
+  text: z.string().trim().min(1).max(500),
+});

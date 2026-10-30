@@ -1,40 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth, API_URL } from '../context/AuthContext';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { useProducts } from "../hooks/useProducts";
+
+const formatBRL = (v) =>
+  Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80";
 
 export default function MarketFeed() {
   const { user } = useAuth();
-  const [products, setProducts] = useState([]);
-  const [filter, setFilter] = useState('ALL');
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("ALL");
+  const [search, setSearch] = useState("");
+  const { data: products = [], isLoading, isError } = useProducts();
 
-  useEffect(() => {
-    fetch(`${API_URL}/products?_sort=created_at&_order=desc`)
-      .then(res => res.json())
-      .then(data => {
-        setProducts(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Erro ao buscar catálogo:", err);
-        setLoading(false);
-      });
-  }, []);
-
-  const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-  const filtered = products.filter(p => {
-    const matchCat = filter === 'ALL' || (p.platform && p.platform.toUpperCase().includes(filter));
-    const matchSearch = !search || 
-      (p.title && p.title.toLowerCase().includes(search.toLowerCase())) || 
-      (p.platform && p.platform.toLowerCase().includes(search.toLowerCase()));
+  const term = search.trim().toLowerCase();
+  const filtered = products.filter((p) => {
+    const matchCat = filter === "ALL" || p.platform?.toUpperCase().includes(filter);
+    const matchSearch =
+      !term ||
+      p.title?.toLowerCase().includes(term) ||
+      p.platform?.toLowerCase().includes(term);
     return matchCat && matchSearch;
   });
 
   return (
     <div className="min-h-screen pb-24 text-slate-200">
-      {/* HEADER DA PÁGINA */}
       <header className="sticky top-0 z-40 bg-noir-950/85 backdrop-blur-md border-b border-noir-700/60 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <div className="w-2.5 h-2.5 bg-neon-pink animate-pulse"></div>
@@ -64,32 +56,32 @@ export default function MarketFeed() {
       </header>
 
       <main className="max-w-md mx-auto px-4 pt-3 space-y-4">
-        {/* BUSCA */}
         <div className="relative flex items-center">
           <span className="absolute left-3 text-neon-pink font-code text-sm">&gt;</span>
-          <input 
+          <input
             type="text"
+            aria-label="Buscar anúncios"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="SEARCH_TITLE || ID || PLATFORM..." 
+            placeholder="SEARCH_TITLE || PLATFORM..."
             className="w-full bg-noir-900 border border-noir-700/80 rounded-none pl-8 pr-4 py-2.5 text-xs text-white placeholder-slate-500 font-code focus:outline-none focus:border-neon-cyan transition-all"
           />
         </div>
 
-        {/* FILTROS */}
         <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-none text-[11px] font-code">
-          {['ALL', 'CART', 'DISC', 'SNES'].map(cat => (
+          {["ALL", "CART", "DISC", "SNES"].map((cat) => (
             <button
               key={cat}
+              type="button"
               onClick={() => setFilter(cat)}
-              className={`px-3 py-1 font-bold chamfer-tag shrink-0 transition-all ${filter === cat ? 'bg-neon-pink text-white glow-pink' : 'bg-noir-800 text-slate-400 border border-noir-700'}`}
+              className={`px-3 py-1 font-bold chamfer-tag shrink-0 transition-all ${filter === cat ? "bg-neon-pink text-white glow-pink" : "bg-noir-800 text-slate-400 border border-noir-700"}`}
             >
-              {cat === 'ALL' ? 'ALL_UNITS' : `[${cat}]`}
+              {cat === "ALL" ? "ALL_UNITS" : `[${cat}]`}
             </button>
           ))}
         </div>
 
-        {/* SCANNER BANNER */}
+        {/* O banner de benchmark pertence à entrega de Referência de Preço (UC03). */}
         <div className="bg-noir-900/90 border border-neon-cyan/40 p-3.5 relative overflow-hidden glow-cyan chamfer-box">
           <div className="flex justify-between items-center mb-1">
             <span className="inline-flex items-center space-x-1.5 text-[10px] font-code text-neon-mint">
@@ -107,20 +99,23 @@ export default function MarketFeed() {
           </div>
         </div>
 
-        {/* LISTA */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <span className="text-neon-pink">■</span> Disponíveis no Distrito
             </h2>
             <span className="text-[10px] font-code text-slate-500">
-              UNITS_ONLINE: {String(filtered.length).padStart(2, '0')}
+              UNITS_ONLINE: {String(filtered.length).padStart(2, "0")}
             </span>
           </div>
 
-          {loading ? (
+          {isLoading ? (
             <div className="py-10 text-center font-code text-xs text-neon-cyan animate-pulse">
               CONNECTING_DISTRICT_DATABASE...
+            </div>
+          ) : isError ? (
+            <div role="alert" className="text-center py-10 bg-noir-900 border-2 border-neon-pink font-code text-xs text-neon-pink font-bold">
+              ⚠ FALHA AO CARREGAR O CATÁLOGO. VERIFIQUE SE O JSON-SERVER ESTÁ ATIVO.
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 bg-noir-900/40 border border-dashed border-noir-800 font-code text-xs text-slate-500">
@@ -128,21 +123,21 @@ export default function MarketFeed() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {filtered.map(item => (
-                <Link 
-                  to={`/product/${item.id}`} 
+              {filtered.map((item) => (
+                <Link
+                  to={`/product/${item.id}`}
                   key={item.id}
                   className="bg-noir-900 border border-noir-700 hover:border-neon-pink transition-all flex flex-col justify-between group block"
                 >
                   <div>
                     <div className="relative bg-noir-800 aspect-[3/4] overflow-hidden">
-                      <img 
-                        src={item.image_url || "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80"} 
+                      <img
+                        src={item.image_url || FALLBACK_IMAGE}
                         alt={item.title}
                         className="w-full h-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-100 transition-all duration-300 filter grayscale contrast-125"
                       />
-                      <div className={`absolute top-2 left-2 bg-noir-950/90 border ${item.is_functional === false ? 'border-neon-amber text-neon-amber' : 'border-neon-mint text-neon-mint'} text-[9px] font-code px-1.5 py-0.5`}>
-                        {item.condition_tag || (item.has_box ? '[CIB // 9.5]' : '[USED]')}
+                      <div className={`absolute top-2 left-2 bg-noir-950/90 border ${item.is_functional === false ? "border-neon-amber text-neon-amber" : "border-neon-mint text-neon-mint"} text-[9px] font-code px-1.5 py-0.5`}>
+                        {item.condition_tag || (item.has_box ? "[CIB // 9.5]" : "[USED]")}
                       </div>
                       <div className="absolute bottom-2 right-2 bg-noir-950/80 text-slate-300 text-[9px] font-code px-1">
                         {item.platform}
@@ -159,8 +154,8 @@ export default function MarketFeed() {
                         <p className="text-neon-cyan font-pixel text-xl leading-none">
                           {formatBRL(item.price)}
                         </p>
-                        <span className={`text-[9px] font-code ${item.is_functional === false ? 'text-neon-amber' : 'text-neon-mint'}`}>
-                          {item.is_functional === false ? '[PEÇAS]' : '[DIRETO]'}
+                        <span className={`text-[9px] font-code ${item.is_functional === false ? "text-neon-amber" : "text-neon-mint"}`}>
+                          {item.is_functional === false ? "[PEÇAS]" : "[DIRETO]"}
                         </span>
                       </div>
                     </div>
