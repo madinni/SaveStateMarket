@@ -23,7 +23,7 @@ export default function SystemGuide() {
             <h2>// BENCHMARK DE PREÇOS (CHEAPSHARK API)</h2>
           </div>
           <p className="text-[11px] font-code text-slate-300 leading-relaxed">
-            Comparamos o preço da mídia usada anunciada com a cotação média digital em lojas como Steam, GOG e PlayStation Store, exibindo a porcentagem real de economia diretamente no card do jogo.
+            Comparamos o preço da mídia usada anunciada com o menor preço atual da versão digital (PC) do mesmo título, consultado na CheapShark API (Steam, GOG, Humble e outras lojas). A diferença percentual aparece no dossiê do anúncio e a média no feed. Títulos sem versão digital de PC aparecem como "sem referência externa".
           </p>
         </div>
 

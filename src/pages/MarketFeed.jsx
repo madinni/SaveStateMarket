@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
+import { useMarketBenchmark } from "../hooks/usePriceReference";
 
 const formatBRL = (v) =>
   Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -14,6 +15,14 @@ export default function MarketFeed() {
   const [filter, setFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const { data: products = [], isLoading, isError } = useProducts();
+
+  // UC03: média da variação entre o preço anunciado e a referência digital externa.
+  const benchmark = useMarketBenchmark(products);
+  const benchValue = benchmark.isLoading
+    ? "..."
+    : benchmark.average === null
+      ? "N/D"
+      : `${benchmark.average > 0 ? "+" : ""}${benchmark.average.toFixed(1)}%`;
 
   const term = search.trim().toLowerCase();
   const filtered = products.filter((p) => {
@@ -81,21 +90,24 @@ export default function MarketFeed() {
           ))}
         </div>
 
-        {/* O banner de benchmark pertence à entrega de Referência de Preço (UC03). */}
         <div className="bg-noir-900/90 border border-neon-cyan/40 p-3.5 relative overflow-hidden glow-cyan chamfer-box">
           <div className="flex justify-between items-center mb-1">
             <span className="inline-flex items-center space-x-1.5 text-[10px] font-code text-neon-mint">
               <span className="w-1.5 h-1.5 rounded-full bg-neon-mint animate-pulse"></span>
-              <span>BENCHMARK_SCANNER // ACTIVE</span>
+              <span>BENCHMARK_SCANNER // {benchmark.isLoading ? "SYNC" : "ACTIVE"}</span>
             </span>
-            <span className="text-[9px] font-code text-slate-400">SYNC: JSON_SERVER_REST</span>
+            <span className="text-[9px] font-code text-slate-400">FONTE: CHEAPSHARK</span>
           </div>
           <div className="flex justify-between items-end">
             <div>
-              <p className="text-xs text-slate-300 font-bold">Média de Desconto em Usados</p>
-              <p className="text-[11px] text-slate-400 font-code">Economia vs. Mídia Digital</p>
+              <p className="text-xs text-slate-300 font-bold">Preço Médio vs. Mídia Digital</p>
+              <p className="text-[11px] text-slate-400 font-code">
+                {benchmark.matched} de {benchmark.total} anúncios com referência
+              </p>
             </div>
-            <span className="text-neon-cyan font-pixel text-3xl leading-none">-42.8%</span>
+            <span className={`font-pixel text-3xl leading-none ${benchmark.average > 0 ? "text-neon-amber" : "text-neon-cyan"}`}>
+              {benchValue}
+            </span>
           </div>
         </div>
 

@@ -111,6 +111,254 @@
       "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
     }
   ],
+  "games": [
+    {
+      "id": "game-001",
+      "title": "Super Mario World",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-002",
+      "title": "Chrono Trigger",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-003",
+      "title": "Super Metroid",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-004",
+      "title": "The Legend of Zelda: A Link to the Past",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-005",
+      "title": "Donkey Kong Country",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-006",
+      "title": "Super Mario Kart",
+      "platform": "SNES (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-007",
+      "title": "The Legend of Zelda: Ocarina of Time",
+      "platform": "N64 (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-008",
+      "title": "Super Mario 64",
+      "platform": "N64 (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-009",
+      "title": "GoldenEye 007",
+      "platform": "N64 (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-010",
+      "title": "Mario Kart 64",
+      "platform": "N64 (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-011",
+      "title": "Crash Bandicoot",
+      "platform": "PS1 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-012",
+      "title": "Gran Turismo 2",
+      "platform": "PS1 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-013",
+      "title": "Final Fantasy VII",
+      "platform": "PS1 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-014",
+      "title": "Metal Gear Solid",
+      "platform": "PS1 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-015",
+      "title": "Resident Evil 2",
+      "platform": "PS1 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-016",
+      "title": "God of War",
+      "platform": "PS2 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-017",
+      "title": "Shadow of the Colossus",
+      "platform": "PS2 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-018",
+      "title": "Grand Theft Auto: San Andreas",
+      "platform": "PS2 (DISC)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-019",
+      "title": "Minecraft",
+      "platform": "XBOX 360",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-020",
+      "title": "Halo 3",
+      "platform": "XBOX 360",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-021",
+      "title": "The Legend of Zelda: Breath of the Wild",
+      "platform": "SWITCH (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "id": "game-022",
+      "title": "Hollow Knight",
+      "platform": "SWITCH (CART)",
+      "region": "NTSC-U",
+      "cover_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    }
+  ],
+  "price_references": [
+    {
+      "ref_key": "gran turismo 2",
+      "title": "Gran Turismo 2",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.298Z",
+      "found": false,
+      "source_game_id": null,
+      "matched_title": null,
+      "steam_app_id": null,
+      "price_usd": null,
+      "usd_brl": null,
+      "fx_estimated": false,
+      "price_brl": null,
+      "id": 1
+    },
+    {
+      "ref_key": "the legend of zelda ocarina of time",
+      "title": "The Legend of Zelda: Ocarina of Time",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.342Z",
+      "found": false,
+      "source_game_id": null,
+      "matched_title": null,
+      "steam_app_id": null,
+      "price_usd": null,
+      "usd_brl": null,
+      "fx_estimated": false,
+      "price_brl": null,
+      "id": 2
+    },
+    {
+      "ref_key": "super mario world",
+      "title": "Super Mario World",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.344Z",
+      "found": false,
+      "source_game_id": null,
+      "matched_title": null,
+      "steam_app_id": null,
+      "price_usd": null,
+      "usd_brl": null,
+      "fx_estimated": false,
+      "price_brl": null,
+      "id": 3
+    },
+    {
+      "ref_key": "chrono trigger",
+      "title": "Chrono Trigger",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.384Z",
+      "found": true,
+      "source_game_id": "178613",
+      "matched_title": "CHRONO TRIGGER",
+      "steam_app_id": "613830",
+      "price_usd": 14.99,
+      "usd_brl": 5.4397,
+      "fx_estimated": false,
+      "price_brl": 81.54,
+      "id": 4
+    },
+    {
+      "ref_key": "crash bandicoot",
+      "title": "Crash Bandicoot",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.384Z",
+      "found": true,
+      "source_game_id": "179004",
+      "matched_title": "Crash Bandicoot N. Sane Trilogy",
+      "steam_app_id": "731490",
+      "price_usd": 39.99,
+      "usd_brl": 5.4397,
+      "fx_estimated": false,
+      "price_brl": 217.53,
+      "id": 5
+    },
+    {
+      "ref_key": "minecraft",
+      "title": "Minecraft",
+      "source": "CheapShark",
+      "fetched_at": "2026-10-31T15:29:00.388Z",
+      "found": true,
+      "source_game_id": "258010",
+      "matched_title": "Minecraft Legends",
+      "steam_app_id": "1928870",
+      "price_usd": 39.99,
+      "usd_brl": 5.4397,
+      "fx_estimated": false,
+      "price_brl": 217.53,
+      "id": 6
+    }
+  ],
   "profile_reviews": [
     {
       "id": "1",
@@ -131,7 +379,19 @@
       "badge": "[VERIFIED_ESCROW]"
     }
   ],
-  "tickets": [],
+  "tickets": [
+    {
+      "id": "TCK-MVWKIYJ3",
+      "author_id": "8f31c92a-0000-0000-0000-000000000001",
+      "author_handle": "@Lume",
+      "category": "PRICE_DISCREPANCY",
+      "priority": "CRITICAL",
+      "subject": "To testando os tickets",
+      "description": "Super teste insano de ticket enviado",
+      "status": "OPEN",
+      "created_at": "2026-10-31T15:40:57.039Z"
+    }
+  ],
   "offers": [
     {
       "id": "OFF-101",

@@ -51,3 +51,18 @@ export const messagesApi = {
   listByOffer: (offerId) => request(`/messages?offer_id=${encodeURIComponent(offerId)}`),
   create: (data) => request("/messages", json("POST", data)),
 };
+
+export const gamesApi = {
+  list: () => request("/games?_sort=title&_order=asc"),
+  get: (id) => request(`/games/${id}`),
+  create: (data) => request("/games", json("POST", data)),
+  update: (id, data) => request(`/games/${id}`, json("PATCH", data)),
+  remove: (id) => request(`/games/${id}`, { method: "DELETE" }),
+};
+
+// Cache local (json-server) das referências de preço externas.
+export const priceRefsApi = {
+  findByKey: (key) => request(`/price_references?ref_key=${encodeURIComponent(key)}`),
+  create: (data) => request("/price_references", json("POST", data)),
+  update: (id, data) => request(`/price_references/${id}`, json("PATCH", data)),
+};

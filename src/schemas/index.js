@@ -26,15 +26,9 @@ export const registerSchema = z.object({
   password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres."),
 });
 
+// Título e plataforma vêm do catálogo (Jogo Base) a partir do game_id.
 export const productSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(2, "O título deve ter pelo menos 2 caracteres.")
-    .max(80, "O título deve ter no máximo 80 caracteres."),
-  platform: z.enum(PLATFORMS.map((p) => p.value), {
-    errorMap: () => ({ message: "Selecione uma plataforma." }),
-  }),
+  game_id: z.string().min(1, "Selecione um jogo do catálogo."),
   price: z.coerce
     .number({ invalid_type_error: "Informe um preço válido." })
     .positive("O preço deve ser maior que zero.")

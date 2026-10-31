@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
 import OwnerActions from "../components/OwnerActions";
+import PriceBenchmark from "../components/PriceBenchmark";
 import { useAuth } from "../context/AuthContext";
 import { useProduct } from "../hooks/useProducts";
 import { useCreateOffer } from "../hooks/useOffers";
@@ -181,6 +182,8 @@ export default function ProductDetails() {
 
             <p className="text-xs text-slate-300 mt-3 leading-relaxed bg-noir-950 p-3 border border-slate-800">{description}</p>
           </div>
+
+          <PriceBenchmark product={product} />
 
           <div className="bg-noir-950 p-3 border border-slate-800 text-xs flex justify-between items-center">
             <span className="text-slate-400">

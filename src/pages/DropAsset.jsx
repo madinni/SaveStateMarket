@@ -3,7 +3,11 @@ import { useNavigate, useParams, Link, Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../context/AuthContext";
-import { useProduct, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
+import { useProduct, useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
+import { useGames } from "../hooks/useGames";
+import { usePriceReference } from "../hooks/usePriceReference";
+import { normalizeTitle } from "../services/priceReference";
+import { formatBRL } from "../utils/format";
 import { productSchema, PLATFORMS } from "../schemas";
 import FieldError from "../components/FieldError";
 
@@ -53,6 +57,8 @@ export default function DropAsset() {
   const [submitError, setSubmitError] = useState("");
 
   const { data: product, isLoading: loadingProduct, isError: productError } = useProduct(id);
+  const { data: games = [], isError: gamesError } = useGames();
+  const { data: allProducts = [] } = useProducts();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
 
@@ -60,12 +66,13 @@ export default function DropAsset() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      title: "",
-      platform: PLATFORMS[0].value,
+      game_id: "",
       price: "",
       has_box: true,
       has_manual: true,
@@ -73,19 +80,39 @@ export default function DropAsset() {
     },
   });
 
-  // Preenche o formulário ao editar um anúncio existente.
+  const selectedGame = games.find((g) => g.id === watch("game_id")) || null;
+  const { data: reference, isLoading: loadingRef, isError: refError } = usePriceReference(selectedGame?.title);
+
+  // UC01: média dos anúncios ativos do mesmo jogo/plataforma (exceto o que está sendo editado).
+  const sameGame = selectedGame
+    ? allProducts.filter(
+        (p) =>
+          String(p.id) !== String(id) &&
+          normalizeTitle(p.title) === normalizeTitle(selectedGame.title) &&
+          p.platform === selectedGame.platform,
+      )
+    : [];
+  const avgListed = sameGame.length
+    ? sameGame.reduce((sum, p) => sum + Number(p.price || 0), 0) / sameGame.length
+    : null;
+
+  // Preenche o formulário ao editar (anúncios antigos sem game_id são casados pelo título).
   useEffect(() => {
-    if (!product) return;
+    if (!product || games.length === 0) return;
+    const game =
+      games.find((g) => g.id === product.game_id) ||
+      games.find(
+        (g) => normalizeTitle(g.title) === normalizeTitle(product.title) && g.platform === product.platform,
+      );
     reset({
-      title: product.title,
-      platform: product.platform,
+      game_id: game?.id ?? "",
       price: product.price,
       has_box: Boolean(product.has_box),
       has_manual: Boolean(product.has_manual),
       is_functional: product.is_functional !== false,
     });
     setPreviewImg(product.image_url || null);
-  }, [product, reset]);
+  }, [product, games, reset]);
 
   if (!user) return <Navigate to="/login" replace />;
 
@@ -105,12 +132,21 @@ export default function DropAsset() {
     }
   };
 
-  const onSubmit = async (values) => {
+  const onSubmit = async ({ game_id, ...values }) => {
     setSubmitError("");
+    const game = games.find((g) => g.id === game_id);
+    if (!game) {
+      setSubmitError("Jogo não encontrado no catálogo.");
+      return;
+    }
+
     const payload = {
       ...values,
+      game_id: game.id,
+      title: game.title,
+      platform: game.platform,
       condition_tag: buildConditionTag(values),
-      image_url: previewImg || DEFAULT_IMAGE,
+      image_url: previewImg || game.cover_url || DEFAULT_IMAGE,
     };
 
     try {
@@ -183,26 +219,36 @@ export default function DropAsset() {
               ) : (
                 <div className="text-center">
                   <p className="text-xs text-white font-bold">+ UPLOAD_RAW_SNAP</p>
-                  <p className="text-[9px] text-slate-500">TOQUE PARA SELECIONAR FOTO</p>
+                  <p className="text-[9px] text-slate-500">TOQUE PARA SELECIONAR FOTO (OPCIONAL: USA A CAPA DO CATÁLOGO)</p>
                 </div>
               )}
             </div>
           </div>
 
           <div>
-            <label htmlFor="asset-title" className="block text-[11px] text-slate-400 uppercase mb-1">[02] Título do Jogo</label>
-            <input id="asset-title" type="text" placeholder="Ex: Super Mario World" {...register("title")} className={field} />
-            <FieldError error={errors.title} />
-          </div>
-
-          <div>
-            <label htmlFor="asset-platform" className="block text-[11px] text-slate-400 uppercase mb-1">[03] Plataforma</label>
-            <select id="asset-platform" {...register("platform")} className={field}>
-              {PLATFORMS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
+            <label htmlFor="asset-game" className="block text-[11px] text-slate-400 uppercase mb-1">[02] Jogo (Catálogo)</label>
+            <select id="asset-game" {...register("game_id")} className={field}>
+              <option value="">Selecione um jogo do catálogo...</option>
+              {PLATFORMS.map((pl) => {
+                const list = games.filter((g) => g.platform === pl.value);
+                return list.length ? (
+                  <optgroup key={pl.value} label={pl.label}>
+                    {list.map((g) => (
+                      <option key={g.id} value={g.id}>{g.title}</option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
             </select>
-            <FieldError error={errors.platform} />
+            <FieldError error={errors.game_id} />
+            {gamesError && (
+              <p role="alert" className="mt-1 text-[10px] font-bold text-neon-pink">⚠ Não foi possível carregar o catálogo de jogos.</p>
+            )}
+            {selectedGame && (
+              <p className="mt-1 text-[10px] text-slate-500">
+                PLATAFORMA: {selectedGame.platform} // REGIÃO: {selectedGame.region}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -221,11 +267,44 @@ export default function DropAsset() {
           </div>
 
           <div>
-            <label htmlFor="asset-price" className="block text-[11px] text-slate-400 uppercase mb-1">[04] Preço Solicitado (R$)</label>
+            <label htmlFor="asset-price" className="block text-[11px] text-slate-400 uppercase mb-1">[03] Preço Solicitado (R$)</label>
             <input id="asset-price" type="number" step="0.01" min="0" placeholder="0.00" {...register("price")}
               className={`${field} font-pixel text-2xl`} />
             <FieldError error={errors.price} />
           </div>
+
+          {selectedGame && (
+            <div className="bg-noir-900 border border-neon-cyan/40 p-2.5 chamfer-box text-[11px] space-y-1.5">
+              <p className="text-neon-cyan font-bold">// SUGESTÃO DE PREÇO</p>
+              {loadingRef ? (
+                <p className="text-slate-400 animate-pulse">CONSULTANDO_BENCHMARK...</p>
+              ) : refError ? (
+                <p className="text-slate-500">Benchmark externo indisponível no momento.</p>
+              ) : reference?.found ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-300">
+                    Referência digital ({reference.source}):{" "}
+                    <strong className="text-neon-mint">{formatBRL(reference.price_brl)}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setValue("price", reference.price_brl, { shouldValidate: true })}
+                    className="px-2 py-1 bg-noir-800 border border-neon-cyan text-neon-cyan font-bold chamfer-tag hover:bg-neon-cyan hover:text-noir-950"
+                  >
+                    [USAR]
+                  </button>
+                </div>
+              ) : (
+                <p className="text-slate-500">Sem referência externa para este título.</p>
+              )}
+              {avgListed !== null && (
+                <p className="text-slate-300">
+                  Média dos anúncios ativos deste jogo:{" "}
+                  <strong className="text-white">{formatBRL(avgListed)}</strong> ({sameGame.length})
+                </p>
+              )}
+            </div>
+          )}
 
           {submitError && (
             <div role="alert" className="bg-noir-900 border-2 border-neon-pink p-3 chamfer-box text-xs text-neon-pink font-bold">
