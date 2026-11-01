@@ -99,6 +99,8 @@ npm run full-dev
 > - `GET / POST / PATCH` → `http://localhost:3001/profiles`
 > - `GET / POST / PATCH` → `http://localhost:3001/profile_reviews`
 > - `POST` → `http://localhost:3001/tickets`
+> - `GET / POST / PATCH` → `http://localhost:3001/orders`
+> - `GET / POST / PATCH` → `http://localhost:3001/refunds`
 
 ---
 

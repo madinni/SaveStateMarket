@@ -23,7 +23,7 @@ function StatusBadge({ status }) {
 }
 
 export default function NegotiationDesk() {
-  const { user } = useAuth();
+  const { user, isProfileSynced } = useAuth();
   const [selectedId, setSelectedId] = useState(null);
   const [showCounterModal, setShowCounterModal] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -51,10 +51,11 @@ export default function NegotiationDesk() {
 
   const isClosed = selectedOffer?.status === "ACCEPTED" || selectedOffer?.status === "REJECTED";
   const isMyLastAction = selectedOffer?.last_action_by === user.id;
-  const canAccept = !isClosed && !isMyLastAction; // impede o auto-aceite
+  const isBlockedBuyer = user.account_status === "refund_pending" && selectedOffer?.buyer_id === user.id;
+  const canAccept = isProfileSynced && !isClosed && !isMyLastAction && !isBlockedBuyer; // impede o auto-aceite e compras bloqueadas
 
   const onSendMessage = async ({ text }) => {
-    if (!selectedOffer || isClosed) return;
+    if (!isProfileSynced || !selectedOffer || isClosed) return;
     setActionError("");
     try {
       await sendMessage.mutateAsync({
@@ -73,6 +74,10 @@ export default function NegotiationDesk() {
 
   const changeOffer = async (status, newPrice = null) => {
     if (!selectedOffer || isClosed) return;
+    if (isBlockedBuyer && (status === "ACCEPTED" || newPrice)) {
+      setActionError("Conta bloqueada para compras até a quitação do reembolso PIX pendente.");
+      return;
+    }
     setActionError("");
 
     const note = newPrice
@@ -122,6 +127,11 @@ export default function NegotiationDesk() {
       />
 
       <main className="max-w-5xl mx-auto px-4 pt-4">
+        {user.account_status === "refund_pending" && (
+          <div role="alert" className="mb-4 border border-neon-amber/60 bg-noir-900 p-3 text-xs text-neon-amber">
+            CONTA BLOQUEADA PARA COMPRAS E NOVOS ANÚNCIOS ATÉ A QUITAÇÃO DOS REEMBOLSOS PIX.
+          </div>
+        )}
         {(isError || actionError) && (
           <div role="alert" className="mb-4 bg-noir-900 border-2 border-neon-pink p-3 chamfer-box text-xs text-neon-pink font-bold">
             ⚠ {actionError || "Falha ao carregar a central de negociações."}
@@ -186,7 +196,7 @@ export default function NegotiationDesk() {
                         className={actionBtn(canAccept, "bg-neon-mint hover:bg-neon-mint/90 text-noir-950 shadow-md cursor-pointer font-black")}>
                         ACEITAR
                       </button>
-                      <button type="button" onClick={() => setShowCounterModal(true)} disabled={updateOffer.isPending || isClosed}
+                      <button type="button" onClick={() => setShowCounterModal(true)} disabled={!isProfileSynced || updateOffer.isPending || isClosed || isBlockedBuyer}
                         className={actionBtn(!isClosed, "bg-noir-800 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 cursor-pointer")}>
                         CONTRAPROPOSTA
                       </button>

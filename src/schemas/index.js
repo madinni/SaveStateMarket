@@ -14,6 +14,20 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Informe a senha."),
 });
 
+export const shippingAddressSchema = z.object({
+  postal_code: z.string().trim().regex(/^\d{5}-?\d{3}$/, "Informe um CEP válido."),
+  street: z.string().trim().min(3, "Informe a rua ou avenida."),
+  number: z.string().trim().min(1, "Informe o número."),
+  complement: z.string().trim().max(80, "Máximo de 80 caracteres."),
+  neighborhood: z.string().trim().min(2, "Informe o bairro."),
+  city: z.string().trim().min(2, "Informe a cidade."),
+  state: z.string().trim().regex(/^[A-Za-z]{2}$/, "Informe a UF com duas letras."),
+});
+
+export const shippingAddressFormSchema = z.object({
+  shipping_address: shippingAddressSchema,
+});
+
 export const registerSchema = z.object({
   handle: z
     .string()
@@ -24,6 +38,7 @@ export const registerSchema = z.object({
     ),
   email: z.string().trim().min(1, "Informe o e-mail.").email("E-mail inválido."),
   password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres."),
+  shipping_address: shippingAddressSchema,
 });
 
 // Título e plataforma vêm do catálogo (Jogo Base) a partir do game_id.

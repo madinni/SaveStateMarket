@@ -50,7 +50,7 @@ function resizeImage(file) {
 export default function DropAsset() {
   const { id } = useParams();
   const isEdit = Boolean(id);
-  const { user } = useAuth();
+  const { user, isProfileSynced } = useAuth();
   const navigate = useNavigate();
 
   const [previewImg, setPreviewImg] = useState(null);
@@ -115,6 +115,17 @@ export default function DropAsset() {
   }, [product, games, reset]);
 
   if (!user) return <Navigate to="/login" replace />;
+  if (!isProfileSynced) {
+    return <div className="p-10 text-center font-code text-xs text-neon-cyan animate-pulse">SINCRONIZANDO_STATUS_DA_CONTA...</div>;
+  }
+  if (!isEdit && user.account_status === "refund_pending") {
+    return (
+      <div className="min-h-screen p-8 text-center font-code text-xs text-neon-amber space-y-4">
+        <p role="alert">CONTA BLOQUEADA PARA NOVOS ANÚNCIOS ATÉ A QUITAÇÃO DO REEMBOLSO PIX.</p>
+        <Link to="/profile" className="text-neon-cyan underline">ACOMPANHAR REEMBOLSO</Link>
+      </div>
+    );
+  }
 
   const isOwner =
     !product ||
@@ -134,6 +145,10 @@ export default function DropAsset() {
 
   const onSubmit = async ({ game_id, ...values }) => {
     setSubmitError("");
+    if (!isEdit && user.account_status === "refund_pending") {
+      setSubmitError("Conta bloqueada para novos anúncios até a quitação do reembolso PIX.");
+      return;
+    }
     const game = games.find((g) => g.id === game_id);
     if (!game) {
       setSubmitError("Jogo não encontrado no catálogo.");

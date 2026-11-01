@@ -5,8 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { profilesApi } from "../services/api";
-import { loginSchema, registerSchema } from "../schemas";
+import { loginSchema, registerSchema, shippingAddressFormSchema } from "../schemas";
 import FieldError from "../components/FieldError";
+import ShippingAddressFields from "../components/ShippingAddressFields";
+import { EMPTY_SHIPPING_ADDRESS, hasShippingAddress } from "../utils/address";
 
 const inputClass =
   "w-full bg-noir-950 border border-noir-700 px-3 py-2 text-white focus:outline-none";
@@ -18,7 +20,7 @@ async function authenticate({ email, password }) {
   return found;
 }
 
-async function registerOperative({ handle, email, password }) {
+async function registerOperative({ handle, email, password, shipping_address }) {
   const finalHandle = handle.startsWith("@") ? handle : `@${handle}`;
 
   const [sameEmail, sameHandle] = await Promise.all([
@@ -32,6 +34,7 @@ async function registerOperative({ handle, email, password }) {
     handle: finalHandle,
     email,
     password_hash: password,
+    shipping_address,
     reputation: 5.0,
     total_transactions: 0,
     success_rate: 100,
@@ -41,51 +44,82 @@ async function registerOperative({ handle, email, password }) {
 }
 
 function LoginForm({ onSuccess }) {
+  const [profileNeedingAddress, setProfileNeedingAddress] = useState(null);
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
-  const mutation = useMutation({ mutationFn: authenticate, onSuccess });
+  const addressForm = useForm({
+    resolver: zodResolver(shippingAddressFormSchema),
+    defaultValues: { shipping_address: { ...EMPTY_SHIPPING_ADDRESS } },
+  });
+  const mutation = useMutation({
+    mutationFn: authenticate,
+    onSuccess: (operative) => {
+      if (hasShippingAddress(operative.shipping_address)) onSuccess(operative);
+      else setProfileNeedingAddress(operative);
+    },
+  });
+  const addressMutation = useMutation({
+    mutationFn: (shipping_address) => profilesApi.update(profileNeedingAddress.id, { shipping_address }),
+    onSuccess: onSuccess,
+  });
 
   return (
-    <form
-      onSubmit={handleSubmit((values) => mutation.mutate(values))}
-      noValidate
-      className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-pink space-y-4 font-code text-xs"
-    >
-      <div>
-        <label htmlFor="login-email" className="block text-[10px] text-slate-400 mb-1">
-          // NETWORK_IDENTIFIER (EMAIL)
-        </label>
-        <input id="login-email" type="email" autoComplete="email" {...register("email")}
-          className={`${inputClass} focus:border-neon-pink`} />
-        <FieldError error={errors.email} />
-      </div>
-      <div>
-        <label htmlFor="login-password" className="block text-[10px] text-slate-400 mb-1">
-          // CIPHER_KEY (SENHA)
-        </label>
-        <input id="login-password" type="password" autoComplete="current-password" {...register("password")}
-          className={`${inputClass} focus:border-neon-pink`} />
-        <FieldError error={errors.password} />
-      </div>
+    <div className="space-y-4">
+      <form
+        onSubmit={handleSubmit((values) => mutation.mutate(values))}
+        noValidate
+        className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-pink space-y-4 font-code text-xs"
+      >
+        <div>
+          <label htmlFor="login-email" className="block text-[10px] text-slate-400 mb-1">
+            // NETWORK_IDENTIFIER (EMAIL)
+          </label>
+          <input id="login-email" type="email" autoComplete="email" {...register("email")}
+            className={`${inputClass} focus:border-neon-pink`} />
+          <FieldError error={errors.email} />
+        </div>
+        <div>
+          <label htmlFor="login-password" className="block text-[10px] text-slate-400 mb-1">
+            // CIPHER_KEY (SENHA)
+          </label>
+          <input id="login-password" type="password" autoComplete="current-password" {...register("password")}
+            className={`${inputClass} focus:border-neon-pink`} />
+          <FieldError error={errors.password} />
+        </div>
 
-      {mutation.isError && (
-        <p role="alert" className="text-neon-pink font-bold">⚠ {mutation.error.message}</p>
+        {mutation.isError && (
+          <p role="alert" className="text-neon-pink font-bold">⚠ {mutation.error.message}</p>
+        )}
+
+        <button type="submit" disabled={mutation.isPending}
+          className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-pink text-white glow-pink disabled:opacity-50">
+          {mutation.isPending ? "AUTENTICANDO..." : "AUTORIZAR_ACESSO >>"}
+        </button>
+      </form>
+      {profileNeedingAddress && (
+        <form onSubmit={addressForm.handleSubmit(({ shipping_address }) => addressMutation.mutate(shipping_address))} noValidate className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box space-y-3 font-code text-xs">
+          <div>
+            <h2 className="text-[11px] font-bold text-neon-amber">ENDEREÇO DE ENTREGA OBRIGATÓRIO</h2>
+            <p className="mt-1 text-[10px] text-slate-400">Complete seu endereço para entrar e realizar compras.</p>
+          </div>
+          <ShippingAddressFields register={addressForm.register} errors={addressForm.formState.errors} prefix="login-shipping" />
+          {addressMutation.isError && <p role="alert" className="text-neon-pink font-bold">⚠ {addressMutation.error.message}</p>}
+          <button type="submit" disabled={addressMutation.isPending}
+            className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-cyan text-noir-950 disabled:opacity-50">
+            {addressMutation.isPending ? "SALVANDO ENDEREÇO..." : "SALVAR E ENTRAR >>"}
+          </button>
+        </form>
       )}
-
-      <button type="submit" disabled={mutation.isPending}
-        className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-pink text-white glow-pink disabled:opacity-50">
-        {mutation.isPending ? "AUTENTICANDO..." : "AUTORIZAR_ACESSO >>"}
-      </button>
-    </form>
+    </div>
   );
 }
 
 function RegisterForm({ onSuccess }) {
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(registerSchema),
-    defaultValues: { handle: "", email: "", password: "" },
+    defaultValues: { handle: "", email: "", password: "", shipping_address: EMPTY_SHIPPING_ADDRESS },
   });
   const mutation = useMutation({ mutationFn: registerOperative, onSuccess });
 
@@ -119,6 +153,10 @@ function RegisterForm({ onSuccess }) {
           className={`${inputClass} focus:border-neon-cyan`} />
         <FieldError error={errors.password} />
       </div>
+      <fieldset className="border-t border-noir-700 pt-4 space-y-3">
+        <legend className="px-1 text-[10px] font-bold text-neon-cyan">ENDEREÇO PRINCIPAL DE ENTREGA *</legend>
+        <ShippingAddressFields register={register} errors={errors} />
+      </fieldset>
 
       {mutation.isError && (
         <p role="alert" className="text-neon-pink font-bold">⚠ {mutation.error.message}</p>

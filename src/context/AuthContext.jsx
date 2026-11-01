@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext();
 
@@ -13,6 +13,7 @@ const toSession = (operative) => {
 };
 
 export const AuthProvider = ({ children }) => {
+  const [isProfileSynced, setIsProfileSynced] = useState(false);
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -21,6 +22,33 @@ export const AuthProvider = ({ children }) => {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsProfileSynced(true);
+      return undefined;
+    }
+    let active = true;
+    setIsProfileSynced(false);
+    fetch(`${API_URL}/profiles/${encodeURIComponent(user.id)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((operative) => {
+        if (!active) return;
+        const session = toSession(operative);
+        setUser(session);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      })
+      .catch((error) => console.error("Falha ao atualizar o perfil autenticado:", error))
+      .finally(() => {
+        if (active) setIsProfileSynced(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   const login = (operativeData) => {
     const session = toSession(operativeData);
@@ -49,7 +77,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, updateAvatar }}>
+    <AuthContext.Provider value={{ user, isProfileSynced, login, logout, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link, Navigate } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
 import { useProfiles, useReviews, useSaveReview } from "../hooks/useProfiles";
-import { reviewSchema } from "../schemas";
+import { reviewSchema, shippingAddressFormSchema } from "../schemas";
+import { ordersApi, profilesApi, refundsApi } from "../services/api";
+import ShippingAddressFields from "../components/ShippingAddressFields";
 import FieldError from "../components/FieldError";
+import { EMPTY_SHIPPING_ADDRESS, formatShippingAddress } from "../utils/address";
+import { createDemoPixPayload } from "../utils/pix";
 
 const normalize = (v) =>
   v ? decodeURIComponent(String(v)).replace(/[@\s]/g, "").toLowerCase() : "";
@@ -16,6 +22,8 @@ const formatBRL = (val) =>
 
 const DEFAULT_AVATAR =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=200&q=80";
+
+const createRefundId = () => `RFD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
 function resizeAvatar(file) {
   return new Promise((resolve, reject) => {
@@ -42,9 +50,13 @@ function resizeAvatar(file) {
 
 export default function OperativeProfile() {
   const [searchParams] = useSearchParams();
-  const { user, logout, updateAvatar } = useAuth();
+  const { user, login, logout, updateAvatar } = useAuth();
   const [feedback, setFeedback] = useState("");
+  const [addressFeedback, setAddressFeedback] = useState("");
   const [avatarError, setAvatarError] = useState("");
+  const [refundError, setRefundError] = useState("");
+  const [refundActionId, setRefundActionId] = useState("");
+  const queryClient = useQueryClient();
 
   const targetHandle = searchParams.get("handle");
   const clean = normalize(targetHandle || user?.handle);
@@ -53,9 +65,30 @@ export default function OperativeProfile() {
 
   const { data: profiles, isLoading: loadingProfiles, isError } = useProfiles();
   const { data: products = [] } = useProducts();
+  const { data: orders = [], isLoading: loadingOrders } = useQuery({
+    queryKey: ["orders"],
+    queryFn: ordersApi.list,
+    enabled: Boolean(isOwnProfile && user?.id),
+  });
+  const { data: refunds = [], isLoading: loadingRefunds } = useQuery({
+    queryKey: ["refunds"],
+    queryFn: refundsApi.list,
+    enabled: Boolean(isOwnProfile && user?.id),
+  });
   const profile = profiles?.find((p) => normalize(p.handle) === clean);
   const { data: reviews = [] } = useReviews(profile?.id);
   const saveReview = useSaveReview(profile?.id);
+  const addressForm = useForm({
+    resolver: zodResolver(shippingAddressFormSchema),
+    defaultValues: { shipping_address: { ...EMPTY_SHIPPING_ADDRESS } },
+  });
+  const saveAddress = useMutation({
+    mutationFn: (shipping_address) => profilesApi.update(user.id, { shipping_address }),
+    onSuccess: (updatedProfile) => {
+      login(updatedProfile);
+      setAddressFeedback("Endereço principal atualizado.");
+    },
+  });
 
   const myReview = user
     ? reviews.find((r) => normalize(r.author_handle) === normalize(user.handle))
@@ -76,6 +109,13 @@ export default function OperativeProfile() {
     reset({ comment: myReview?.comment ?? "", rating: myReview?.rating ?? 5 });
   }, [myReview?.id, myReview?.comment, myReview?.rating, reset]);
 
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    addressForm.reset({
+      shipping_address: { ...EMPTY_SHIPPING_ADDRESS, ...user?.shipping_address },
+    });
+  }, [addressForm.reset, isOwnProfile, user?.id, user?.shipping_address]);
+
   if (!targetHandle && !user) return <Navigate to="/login" replace />;
 
   if (loadingProfiles) {
@@ -94,6 +134,11 @@ export default function OperativeProfile() {
   }
 
   const userProducts = products.filter((p) => normalize(p.seller_handle) === clean);
+  const sellerOrders = orders.filter(
+    (order) =>
+      order.status === "approved" &&
+      order.items?.some((item) => String(item.seller_id) === String(user?.id)),
+  );
   const avatarSrc = (isOwnProfile && user?.avatar_url) || profile.avatar_url || DEFAULT_AVATAR;
 
   const handleAvatarUpload = async (e) => {
@@ -124,6 +169,85 @@ export default function OperativeProfile() {
       setFeedback("Feedback registrado com sucesso.");
     } catch {
       /* o erro é exibido via saveReview.isError */
+    }
+  };
+
+  const startRefund = async (order, sellerItems) => {
+    const refundId = createRefundId();
+    const amount = sellerItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    if (!amount) {
+      setRefundError("Não foi possível calcular o valor dos itens para reembolso.");
+      return;
+    }
+
+    setRefundError("");
+    setRefundActionId(order.id);
+    try {
+      const updatedProfile = await profilesApi.update(user.id, { account_status: "refund_pending" });
+      login(updatedProfile);
+      const createdRefund = await refundsApi.create({
+        id: refundId,
+        order_id: order.id,
+        seller_id: user.id,
+        seller_handle: user.handle,
+        buyer_id: order.buyer_id,
+        buyer_handle: order.buyer_handle,
+        item_ids: sellerItems.map((item) => item.product_id),
+        item_titles: sellerItems.map((item) => item.title),
+        amount,
+        payment_method: "PIX",
+        status: "pending",
+        pix_copy_paste: createDemoPixPayload(amount, refundId),
+        created_at: new Date().toISOString(),
+      });
+      queryClient.setQueryData(["refunds"], (currentRefunds = []) => [...currentRefunds, createdRefund]);
+      try {
+        const deliveryCancellations = [
+          ...(order.delivery_cancellations || []).filter((entry) => String(entry.seller_id) !== String(user.id)),
+          { seller_id: user.id, refund_id: refundId, status: "cancelled", cancelled_at: new Date().toISOString() },
+        ];
+        await ordersApi.update(order.id, { delivery_cancellations: deliveryCancellations });
+      } catch {
+        setRefundError("Reembolso registrado e conta bloqueada, mas o status de entrega não foi atualizado.");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["refunds"] });
+    } catch (error) {
+      setRefundError(error.message || "Não foi possível iniciar o reembolso.");
+      await queryClient.invalidateQueries({ queryKey: ["refunds"] });
+      const currentRefunds = await refundsApi.list().catch(() => refunds);
+      queryClient.setQueryData(["refunds"], currentRefunds);
+      const hasPendingRefund = currentRefunds.some(
+        (refund) => String(refund.seller_id) === String(user.id) && refund.status === "pending",
+      );
+      if (!hasPendingRefund) {
+        try {
+          login(await profilesApi.update(user.id, { account_status: "active" }));
+        } catch {
+          setRefundError("A conta continua bloqueada. Tente novamente ou contate o suporte.");
+        }
+      }
+    } finally {
+      setRefundActionId("");
+    }
+  };
+
+  const simulateRefundPayment = async (refund) => {
+    setRefundError("");
+    setRefundActionId(refund.id);
+    try {
+      await refundsApi.update(refund.id, { status: "paid", paid_at: new Date().toISOString() });
+      await queryClient.invalidateQueries({ queryKey: ["refunds"] });
+      const currentRefunds = await refundsApi.list();
+      const hasPendingRefund = currentRefunds.some(
+        (entry) => String(entry.seller_id) === String(user.id) && entry.status === "pending",
+      );
+      if (!hasPendingRefund) {
+        login(await profilesApi.update(user.id, { account_status: "active" }));
+      }
+    } catch (error) {
+      setRefundError(error.message || "Não foi possível confirmar o pagamento do reembolso.");
+    } finally {
+      setRefundActionId("");
     }
   };
 
@@ -212,6 +336,106 @@ export default function OperativeProfile() {
             <button type="button" onClick={() => alert("Saque PIX autorizado.")} className="px-3 py-1.5 bg-noir-800 hover:bg-neon-cyan hover:text-noir-950 text-neon-cyan border border-neon-cyan text-[10px] font-code font-bold chamfer-tag">
               [SACAR_SALDO]
             </button>
+          </section>
+        )}
+
+        {isOwnProfile && (
+          <section className="bg-noir-900 border border-noir-700 p-4 chamfer-box space-y-3">
+            <div>
+              <h2 className="text-xs font-bold text-neon-cyan">ENDEREÇO PRINCIPAL DE ENTREGA</h2>
+              <p className="mt-1 text-[10px] text-slate-500">Usado para compras e compartilhado com o vendedor após a aprovação do pagamento.</p>
+            </div>
+            <p className="border border-slate-800 bg-noir-950 p-3 text-[10px] leading-relaxed text-slate-300">
+              {formatShippingAddress(user?.shipping_address)}
+            </p>
+            <form onSubmit={addressForm.handleSubmit(({ shipping_address }) => saveAddress.mutate(shipping_address))} noValidate className="space-y-3">
+              <ShippingAddressFields register={addressForm.register} errors={addressForm.formState.errors} />
+              {saveAddress.isError && <p role="alert" className="text-[10px] font-bold text-neon-pink">⚠ {saveAddress.error.message}</p>}
+              {addressFeedback && <p role="status" className="text-[10px] font-bold text-neon-mint">{addressFeedback}</p>}
+              <button type="submit" disabled={saveAddress.isPending} className="w-full py-2 bg-neon-cyan text-noir-950 text-xs font-bold disabled:opacity-50">
+                {saveAddress.isPending ? "SALVANDO..." : "SALVAR ENDEREÇO PRINCIPAL"}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {isOwnProfile && (
+          <section className="space-y-2">
+            <div className="border-b border-noir-800 pb-1 text-xs font-bold text-white">
+              VENDAS PAGAS ({sellerOrders.length})
+            </div>
+            {user.account_status === "refund_pending" && (
+              <p role="alert" className="border border-neon-amber/60 bg-noir-900 p-3 text-[10px] text-neon-amber">
+                CONTA BLOQUEADA PARA COMPRAS E NOVOS ANÚNCIOS ATÉ A QUITAÇÃO DOS REEMBOLSOS PIX.
+              </p>
+            )}
+            {refundError && <p role="alert" className="text-[10px] font-bold text-neon-pink">⚠ {refundError}</p>}
+            {loadingOrders ? (
+              <div className="bg-noir-900 border border-noir-800 p-4 text-center text-xs text-slate-500">CARREGANDO PEDIDOS...</div>
+            ) : sellerOrders.length === 0 ? (
+              <div className="bg-noir-900 border border-noir-800 p-4 text-center text-xs text-slate-500">NENHUM PEDIDO PAGO PARA SEUS ANÚNCIOS.</div>
+            ) : sellerOrders.map((order) => {
+              const sellerItems = order.items.filter((item) => String(item.seller_id) === String(user.id));
+              const refund = refunds.find(
+                (entry) => String(entry.order_id) === String(order.id) && String(entry.seller_id) === String(user.id),
+              );
+              const refundAmount = sellerItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+              return (
+                <article key={order.id} className="bg-noir-900 border border-neon-mint/50 p-3 chamfer-box space-y-2">
+                  <div className="flex justify-between gap-2 text-[10px]">
+                    <span className={`font-bold ${refund ? "text-neon-amber" : "text-neon-mint"}`}>
+                      {refund ? "ENTREGA CANCELADA" : "PIX APROVADO"}
+                    </span>
+                    <span className="text-slate-500">{order.id}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300">COMPRADOR: {order.buyer_handle || "Operador"}</p>
+                  <p className="text-[10px] text-slate-300">
+                    {refund ? "Entrega cancelada. Conclua o reembolso PIX ao comprador." : "Pagamento realizado. Prepare o envio para o endereço abaixo."}
+                  </p>
+                  <ul className="space-y-1 text-[10px] text-slate-300">
+                    {sellerItems.map((item) => <li key={item.product_id}>{item.title} · QTD {item.quantity}</li>)}
+                  </ul>
+                  {!refund && (
+                    <div className="border-t border-slate-700 pt-2">
+                      <p className="text-[9px] font-bold text-neon-cyan">ENDEREÇO DE ENTREGA</p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-slate-300">{formatShippingAddress(order.shipping_address)}</p>
+                    </div>
+                  )}
+                  {refund ? (
+                    <div className="border-t border-slate-700 pt-3 space-y-2">
+                      <div className="flex justify-between gap-2 text-[10px]">
+                        <span className="font-bold text-neon-amber">DEVOLUÇÃO PIX</span>
+                        <span className={refund.status === "paid" ? "text-neon-mint" : "text-neon-amber"}>
+                          {refund.status === "paid" ? "REEMBOLSO PAGO" : "REEMBOLSO PENDENTE"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-300">Devolva {formatBRL(refund.amount)} ao comprador via PIX.</p>
+                      {refund.status === "pending" && (
+                        <>
+                          <div className="flex justify-center bg-white p-3">
+                            <QRCodeSVG value={refund.pix_copy_paste} size={180} level="M" includeMargin />
+                          </div>
+                          <textarea readOnly value={refund.pix_copy_paste} rows={3}
+                            aria-label="PIX Copia e Cola do reembolso"
+                            className="w-full resize-none break-all bg-noir-950 border border-slate-700 p-2 text-[9px] text-slate-300" />
+                          <p className="text-[9px] text-neon-amber">PIX de reembolso simulado. Nenhuma transferência real será feita.</p>
+                          <button type="button" onClick={() => simulateRefundPayment(refund)} disabled={refundActionId === refund.id || refundActionId === order.id}
+                            className="w-full py-2 bg-neon-amber text-noir-950 text-[10px] font-black disabled:opacity-50">
+                            {refundActionId === refund.id ? "PROCESSANDO..." : "SIMULAR PAGAMENTO DO REEMBOLSO"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => startRefund(order, sellerItems)}
+                      disabled={loadingRefunds || refundActionId === order.id || user.account_status === "refund_pending"}
+                      className="w-full border border-neon-pink py-2 text-[10px] font-bold text-neon-pink hover:bg-neon-pink/10 disabled:opacity-50">
+                      {refundActionId === order.id ? "GERANDO REEMBOLSO..." : `CANCELAR ENTREGA E REEMBOLSAR ${formatBRL(refundAmount)}`}
+                    </button>
+                  )}
+                </article>
+              );
+            })}
           </section>
         )}
 

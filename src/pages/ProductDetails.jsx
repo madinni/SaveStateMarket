@@ -7,6 +7,7 @@ import FieldError from "../components/FieldError";
 import OwnerActions from "../components/OwnerActions";
 import PriceBenchmark from "../components/PriceBenchmark";
 import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 import { useProduct } from "../hooks/useProducts";
 import { useCreateOffer } from "../hooks/useOffers";
 import { offerSchema } from "../schemas";
@@ -16,7 +17,8 @@ const newId = (prefix) => `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 export default function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isProfileSynced } = useAuth();
+  const { addItem } = useCart();
 
   const { data: product, isLoading, isError, error } = useProduct(id);
   const createOffer = useCreateOffer();
@@ -68,6 +70,7 @@ export default function ProductDetails() {
     .join(" • ");
 
   const buyerId = user?.id;
+  const isRefundBlocked = user?.account_status === "refund_pending";
   const isOwner =
     Boolean(user) &&
     (String(product.seller_id) === String(user.id) || product.seller_handle === user.handle);
@@ -103,7 +106,11 @@ export default function ProductDetails() {
   };
 
   const onSubmitOffer = async ({ price, message }) => {
-    if (!requireLogin() || isOwner) return;
+    if (!isProfileSynced || !requireLogin() || isOwner) return;
+    if (isRefundBlocked) {
+      setActionError("Conta bloqueada até a quitação do reembolso PIX pendente.");
+      return;
+    }
     setActionError("");
     const offer = buildOffer(price, "PENDING");
     try {
@@ -120,24 +127,14 @@ export default function ProductDetails() {
     }
   };
 
-  const handleDirectBuy = async () => {
-    if (!requireLogin() || isOwner) return;
-    if (!window.confirm(`Confirmar compra imediata de "${product.title}" por R$ ${productPrice.toFixed(2)}?`)) return;
-    setActionError("");
-    const offer = buildOffer(productPrice, "ACCEPTED");
-    try {
-      await createOffer.mutateAsync({
-        offer,
-        firstMessage: buildMessage(
-          offer.id,
-          `[SISTEMA]: Compra direta confirmada no valor de R$ ${productPrice.toFixed(2)}.`,
-          true,
-        ),
-      });
-      navigate("/offers");
-    } catch (err) {
-      setActionError(err.message || "Erro ao processar compra direta.");
+  const handleDirectBuy = () => {
+    if (!isProfileSynced || !requireLogin() || isOwner) return;
+    if (isRefundBlocked) {
+      setActionError("Conta bloqueada até a quitação do reembolso PIX pendente.");
+      return;
     }
+    addItem(product);
+    navigate("/checkout");
   };
 
   const closeModal = () => {
@@ -200,17 +197,22 @@ export default function ProductDetails() {
           {actionError && (
             <p role="alert" className="text-xs font-bold text-neon-pink">⚠ {actionError}</p>
           )}
+          {isRefundBlocked && (
+            <p role="alert" className="text-xs text-neon-amber">
+              Conta bloqueada para compras enquanto houver reembolso pendente. Consulte seu <Link to="/profile" className="text-neon-cyan underline">perfil</Link>.
+            </p>
+          )}
 
           <div className="pt-2">
             {isOwner ? (
               <OwnerActions product={product} />
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={handleDirectBuy} disabled={createOffer.isPending}
+                <button type="button" onClick={handleDirectBuy} disabled={!isProfileSynced || createOffer.isPending || isRefundBlocked}
                   className="py-3 bg-neon-mint hover:bg-neon-mint/90 text-noir-950 font-black text-xs uppercase chamfer-box tracking-wider cursor-pointer shadow-md disabled:opacity-50">
-                  {createOffer.isPending ? "PROCESSANDO..." : "COMPRA DIRETA"}
+                  COMPRAR AGORA
                 </button>
-                <button type="button" onClick={() => (requireLogin() ? setShowOfferModal(true) : null)} disabled={createOffer.isPending}
+                <button type="button" onClick={() => (isProfileSynced && requireLogin() && !isRefundBlocked ? setShowOfferModal(true) : null)} disabled={!isProfileSynced || createOffer.isPending || isRefundBlocked}
                   className="py-3 bg-noir-800 border-2 border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 font-black text-xs uppercase chamfer-box tracking-wider cursor-pointer disabled:opacity-50">
                   ENVIAR PROPOSTA
                 </button>

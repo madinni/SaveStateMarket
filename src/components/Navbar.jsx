@@ -1,7 +1,9 @@
 import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
+import { useCart } from '../context/CartContext';
 
 export default function Navbar() {
+  const { itemCount } = useCart();
   const activeClass = "text-neon-pink flex flex-col items-center";
   const inactiveClass = "text-slate-500 hover:text-neon-cyan flex flex-col items-center transition-colors";
 
@@ -15,6 +17,10 @@ export default function Navbar() {
         <NavLink to="/offers" className={({ isActive }) => isActive ? activeClass : inactiveClass}>
           <span className="font-pixel text-lg">◈</span>
           <span className="font-code text-[9px] tracking-tighter">OFFERS</span>
+        </NavLink>
+        <NavLink to="/checkout" className={({ isActive }) => isActive ? activeClass : inactiveClass}>
+          <span className="font-pixel text-lg">▣</span>
+          <span className="font-code text-[9px] tracking-tighter">CART{itemCount ? ` ${itemCount}` : ''}</span>
         </NavLink>
         <Link to="/sell" className="bg-neon-pink text-white p-2.5 chamfer-box glow-pink hover:scale-105 active:scale-95 transition-all -mt-5 border border-white/20 flex items-center justify-center">
           <span className="font-code text-xs font-bold leading-none">+SELL</span>

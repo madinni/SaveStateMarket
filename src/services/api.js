@@ -22,12 +22,26 @@ export const productsApi = {
   remove: (id) => request(`/products/${id}`, { method: "DELETE" }),
 };
 
+export const ordersApi = {
+  list: () => request("/orders"),
+  create: (data) => request("/orders", json("POST", data)),
+  get: (id) => request(`/orders/${id}`),
+  update: (id, data) => request(`/orders/${id}`, json("PATCH", data)),
+};
+
+export const refundsApi = {
+  list: () => request("/refunds"),
+  create: (data) => request("/refunds", json("POST", data)),
+  update: (id, data) => request(`/refunds/${id}`, json("PATCH", data)),
+};
+
 export const profilesApi = {
   list: () => request("/profiles"),
   // A senha nunca vai na URL: busca-se apenas pelo e-mail e confere-se no cliente.
   findByEmail: (email) => request(`/profiles?email=${encodeURIComponent(email)}`),
   findByHandle: (handle) => request(`/profiles?handle=${encodeURIComponent(handle)}`),
   create: (data) => request("/profiles", json("POST", data)),
+  update: (id, data) => request(`/profiles/${id}`, json("PATCH", data)),
 };
 
 export const reviewsApi = {

@@ -10,7 +10,17 @@
       "success_rate": 98.4,
       "vault_balance": 540,
       "clearance_level": "LEVEL_3",
-      "avatar_url": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=200&q=80"
+      "avatar_url": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=200&q=80",
+      "shipping_address": {
+        "postal_code": "28547792",
+        "street": "Rua dos alfeneiros",
+        "number": "42",
+        "complement": "perto do harry potter",
+        "neighborhood": "Hogwarts da silva",
+        "city": "Londres",
+        "state": "LN"
+      },
+      "account_status": "active"
     },
     {
       "id": "8f31c92a-0000-0000-0000-000000000001",
@@ -22,52 +32,108 @@
       "success_rate": 100,
       "vault_balance": 120,
       "clearance_level": "LEVEL_2",
-      "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
+      "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "shipping_address": {
+        "postal_code": "20514485",
+        "street": "Rua josé Higino",
+        "number": "231",
+        "complement": "ap 321",
+        "neighborhood": "Tijuca",
+        "city": "Rio de Janeiro",
+        "state": "Rj"
+      }
+    }
+  ],
+  "orders": [
+    {
+      "id": "ORD-MVX5KY3G-fb9276e9",
+      "items": [
+        {
+          "product_id": "prod-002",
+          "title": "Super Mario World",
+          "platform": "SNES (CART)",
+          "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80",
+          "seller_id": "7d8cd670-0000-0000-0000-000000000000",
+          "seller_handle": "@K3nji_Zero",
+          "quantity": 1,
+          "unit_price": 95,
+          "subtotal": 95
+        }
+      ],
+      "total": 95,
+      "payment_method": "PIX",
+      "status": "approved",
+      "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid520400005303986540595.005802BR5916SAVESTATE MARKET6009SAO PAULO62230519ORDMVX5KY3GFB9276E96304FFBA",
+      "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
+      "buyer_handle": "@Lume",
+      "created_at": "2026-11-01T01:30:21.724Z",
+      "approved_at": "2026-11-01T01:30:27.762Z",
+      "delivery_cancellations": [
+        {
+          "seller_id": "7d8cd670-0000-0000-0000-000000000000",
+          "refund_id": "RFD-MVX6BGMF-0TVGEN",
+          "status": "cancelled",
+          "cancelled_at": "2026-11-01T01:50:58.860Z"
+        }
+      ]
+    },
+    {
+      "id": "ORD-MVX5Z4SP-fa3be02a",
+      "items": [
+        {
+          "product_id": "prod-001",
+          "title": "Minecraft",
+          "platform": "XBOX 360",
+          "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80",
+          "seller_id": "7d8cd670-0000-0000-0000-000000000000",
+          "seller_handle": "@K3nji_Zero",
+          "quantity": 2,
+          "unit_price": 85,
+          "subtotal": 170
+        }
+      ],
+      "total": 170,
+      "payment_method": "PIX",
+      "status": "approved",
+      "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid5204000053039865406170.005802BR5916SAVESTATE MARKET6009SAO PAULO62230519ORDMVX5Z4SPFA3BE02A6304587B",
+      "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
+      "buyer_handle": "@Lume",
+      "shipping_address": {
+        "postal_code": "20514485",
+        "street": "Rua josé Higino",
+        "number": "231",
+        "complement": "ap 321",
+        "neighborhood": "Tijuca",
+        "city": "Rio de Janeiro",
+        "state": "Rj"
+      },
+      "created_at": "2026-11-01T01:41:23.594Z",
+      "approved_at": "2026-11-01T01:41:26.781Z"
+    }
+  ],
+  "refunds": [
+    {
+      "id": "RFD-MVX6BGMF-0TVGEN",
+      "order_id": "ORD-MVX5KY3G-fb9276e9",
+      "seller_id": "7d8cd670-0000-0000-0000-000000000000",
+      "seller_handle": "@K3nji_Zero",
+      "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
+      "buyer_handle": "@Lume",
+      "item_ids": [
+        "prod-002"
+      ],
+      "item_titles": [
+        "Super Mario World"
+      ],
+      "amount": 95,
+      "payment_method": "PIX",
+      "status": "paid",
+      "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid520400005303986540595.005802BR5916SAVESTATE MARKET6009SAO PAULO62210517RFDMVX6BGMF0TVGEN6304E47E",
+      "created_at": "2026-11-01T01:50:58.841Z",
+      "paid_at": "2026-11-01T01:51:18.996Z"
     }
   ],
   "products": [
-    {
-      "id": "prod-001",
-      "created_at": "2026-09-07T21:21:28.029Z",
-      "seller_handle": "@K3nji_Zero",
-      "seller_id": "7d8cd670-0000-0000-0000-000000000000",
-      "title": "Minecraft",
-      "platform": "XBOX 360",
-      "has_box": true,
-      "has_manual": false,
-      "is_functional": true,
-      "price": 85,
-      "condition_tag": "[CIB // 9.0]",
-      "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      "id": "prod-002",
-      "created_at": "2026-09-07T20:37:21.960Z",
-      "seller_handle": "@K3nji_Zero",
-      "seller_id": "7d8cd670-0000-0000-0000-000000000000",
-      "title": "Super Mario World",
-      "platform": "SNES (CART)",
-      "has_box": true,
-      "has_manual": true,
-      "is_functional": true,
-      "price": 95,
-      "condition_tag": "[CIB // 9.5]",
-      "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      "id": "prod-003",
-      "created_at": "2026-09-08T10:15:00.000Z",
-      "seller_handle": "@K3nji_Zero",
-      "seller_id": "7d8cd670-0000-0000-0000-000000000000",
-      "title": "Chrono Trigger",
-      "platform": "SNES (CART)",
-      "has_box": true,
-      "has_manual": true,
-      "is_functional": true,
-      "price": 350,
-      "condition_tag": "[CIB // 9.5]",
-      "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
-    },
     {
       "id": "prod-004",
       "created_at": "2026-09-09T14:00:00.000Z",
@@ -420,6 +486,23 @@
       "status": "ACCEPTED",
       "last_action_by": "8f31c92a-0000-0000-0000-000000000001",
       "updated_at": "2026-10-30T12:03:56.283Z"
+    },
+    {
+      "id": "OFF-MVX52G89",
+      "product_id": "prod-003",
+      "product_title": "Chrono Trigger",
+      "original_price": 350,
+      "offered_price": 350,
+      "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
+      "buyer_handle": "@Lume",
+      "seller_id": "7d8cd670-0000-0000-0000-000000000000",
+      "seller_handle": "@K3nji_Zero",
+      "status": "ACCEPTED",
+      "last_action_by": "8f31c92a-0000-0000-0000-000000000001",
+      "updated_at": "2026-11-01T01:15:58.761Z",
+      "payment_method": "PIX",
+      "payment_status": "CONFIRMED_DEMO",
+      "paid_at": "2026-11-01T01:15:58.761Z"
     }
   ],
   "messages": [
@@ -462,6 +545,14 @@
       "sender_handle": "PROTOCOL_BOT",
       "text": "[SISTEMA]: Proposta ACEITA por @Lume",
       "timestamp": "2026-10-30T12:03:56.284Z"
+    },
+    {
+      "id": "SYS-MVX52G89",
+      "offer_id": "OFF-MVX52G89",
+      "sender_id": "SYSTEM",
+      "sender_handle": "PROTOCOL_BOT",
+      "text": "[SISTEMA]: Pagamento PIX simulado confirmado no valor de R$ 350.00.",
+      "timestamp": "2026-11-01T01:15:58.761Z"
     }
   ]
 }
