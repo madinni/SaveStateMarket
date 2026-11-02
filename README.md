@@ -1,22 +1,27 @@
 # 🕹️ SaveState Market // NULL//EXCHANGE
 
-> **Plataforma P2P e marketplace descentralizado para compra, venda e negociação de mídias físicas retrô e clássicas.**
+> **Plataforma P2P e marketplace para compra, venda e negociação de mídias físicas retrô e clássicas.**
 
-Projeto desenvolvido para a disciplina de Programação Web, integrando uma arquitetura moderna baseada em **React**, estilização utilitária com **Tailwind CSS**, abordagem **Mobile-First** e persistência de dados via API REST simulada com **JSON Server**.
+Projeto desenvolvido para a disciplina de Programação Web, com frontend em **React** + **Tailwind CSS** (abordagem **Mobile-First**) e uma **API REST própria em Node.js/Express**, com autenticação **JWT (Passport)**, validação com **Zod** e persistência em arquivo JSON (`db.json`).
 
 ---
 
 ## 🎯 Sobre o Projeto
 
-O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicação web interativa focada no público colecionador de consoles antigos e jogos clássicos. O visual da plataforma adota a estética *neo-noir / cyberpunk*, incorporando linhas de varredura CRT (*scanlines*), efeitos de brilho em neon e cortes angulares nos elementos da interface.
+O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicação web focada no público colecionador de consoles antigos e jogos clássicos. O visual adota a estética *neo-noir / cyberpunk*, com linhas de varredura CRT (*scanlines*, que podem ser ligadas/desligadas), brilho em neon e cortes angulares nos elementos da interface.
 
 ### Principais Recursos
-- **Catálogo Interativo (Market Feed):** Listagem dinâmica com filtros instantâneos por mídia (Cartuchos, Discos Ópticos, Plataformas específicas) e busca textual por títulos ou identificadores.
-- **Dossiê do Operador (Profile & Reviews):** Perfil de usuário com histórico de transações, métricas de sucesso, inventário em tempo real e sistema relacional de reputação com suporte a atualização de logs existentes.
-- **Diagnóstico & Cadastro de Mídias (Drop Asset):** Formulário de publicação com validação de conservação física (box, manual e funcionalidade) e processamento/compressão de imagem em canvas client-side.
-- **Mesa de Negociação (Negotiation Desk):** Sistema de contrapropostas com cálculo de desconto automático, simulador de propostas e protocolos de troca P2P.
-- **Protocolo de Suporte (Dispatch Ticket):** Central de atendimento ao consumidor para relato de divergências de hardware ou mediação de custódia.
-- **Benchmark de Preço:** Estimativa comparativa em tempo real entre o valor da mídia física anunciada e a cotação digital.
+- **Cadastro e Login com JWT:** criação de conta com endereço de entrega, senha armazenada com hash bcrypt e token com validade de 1 hora.
+- **Catálogo Interativo (Market Feed):** listagem de anúncios com filtros por mídia/plataforma e busca textual.
+- **Publicação de Anúncios (Drop Asset):** escolha do jogo a partir do catálogo, diagnóstico de conservação (caixa, manual, funcionamento) e compressão de imagem no navegador. O anunciante pode editar e excluir os próprios anúncios.
+- **Mesa de Negociação (Negotiation Desk):** propostas e contrapropostas entre comprador e vendedor, com chat por negociação (somente leitura após encerrada).
+- **Carrinho e Checkout com PIX simulado:** o servidor calcula os valores e gera um código PIX “copia e cola” de demonstração. Ao aprovar o pagamento, os anúncios saem do catálogo e os vendedores são notificados.
+- **Cancelamento de Entrega e Reembolso:** o vendedor pode cancelar a entrega; um reembolso PIX é gerado e a conta fica bloqueada para novas compras/anúncios até a quitação.
+- **Dossiê do Operador (Perfil & Avaliações):** histórico de pedidos, inventário e reputação calculada a partir das avaliações.
+- **Alertas de Preço por Título:** avisa quando surgir um anúncio do jogo desejado pelo preço-alvo ou menos.
+- **Notificações:** geradas pelo servidor para propostas, vendas, avaliações, alertas e reembolsos.
+- **Benchmark de Preço:** comparação do valor anunciado com a cotação digital (API CheapShark + câmbio USD→BRL), com cache de 24h.
+- **Protocolo de Suporte (Tickets):** abertura de chamados, inclusive por visitantes.
 
 ---
 
@@ -24,13 +29,18 @@ O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicaç�
 
 | Camada | Tecnologia | Finalidade |
 | :--- | :--- | :--- |
-| **Frontend Core** | [React 18](https://react.dev/) | Biblioteca para construção da interface declarativa em componentes |
-| **Build Tool** | [Vite](https://vitejs.dev/) | Ferramenta de build rápida com suporte a Hot Module Replacement (HMR) |
-| **Roteamento** | [React Router DOM v6](https://reactrouter.com/) | Gerenciamento de rotas e navegação client-side (SPA) |
-| **Estilização** | [Tailwind CSS v3](https://tailwindcss.com/) | Framework CSS utilitário para design responsivo e customização de tema |
-| **Gerenciamento de Estado** | React Context API | Controle global de autenticação de operadores e persistência local |
-| **Backend Mock** | [JSON Server](https://github.com/typicode/json-server) | Emulação de API REST com suporte a operações CRUD (`GET`, `POST`, `PATCH`) |
-| **Concorrência** | [Concurrently](https://github.com/open-cli-tools/concurrently) | Execução simultânea do frontend e do servidor mock em um único terminal |
+| **Frontend** | [React 18](https://react.dev/) + [Vite 5](https://vitejs.dev/) | Interface em componentes e servidor de desenvolvimento com HMR |
+| **Roteamento** | [React Router](https://reactrouter.com/) | Navegação client-side (SPA) e rotas protegidas |
+| **Dados no cliente** | [TanStack Query](https://tanstack.com/query) | Cache e sincronização das requisições à API |
+| **Formulários** | [React Hook Form](https://react-hook-form.com/) + [Zod](https://zod.dev/) | Formulários com validação no cliente |
+| **Estilização** | [Tailwind CSS v3](https://tailwindcss.com/) | CSS utilitário e tema neo-noir customizado |
+| **Estado global** | React Context API | Sessão, carrinho e efeito CRT |
+| **Backend** | [Express 5](https://expressjs.com/) | API REST |
+| **Autenticação** | [Passport](https://www.passportjs.org/) + `passport-jwt`, `jsonwebtoken`, `bcryptjs` | Login com JWT e hash de senhas |
+| **Validação no servidor** | [Zod](https://zod.dev/) | A API valida todo corpo recebido |
+| **Persistência** | Arquivo `db.json` | Banco de dados em JSON, lido e gravado pela camada `server/store.js` |
+| **Testes** | `node:test` | Testes de integração da API |
+| **Concorrência** | [Concurrently](https://github.com/open-cli-tools/concurrently) | Sobe API e frontend em um único terminal |
 
 ---
 
@@ -38,31 +48,37 @@ O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicaç�
 
 ```
 SaveStateMarket/
-├── db.json                 # Base de dados simulada para o JSON Server
+├── env                     # Modelo das variáveis de ambiente (copiar para .env)
+├── db.json                 # Banco de dados (JSON) usado pela API
 ├── index.html              # Ponto de entrada HTML do Vite
-├── package.json            # Dependências e scripts do ecossistema Node.js
-├── postcss.config.js       # Configuração do PostCSS para compilação do Tailwind
-├── tailwind.config.js      # Paleta de cores neo-noir e tipografia customizada
-├── vite.config.js          # Configurações do compilador Vite e plugins
-└── src/
-    ├── App.jsx             # Definição de rotas e providers globais
-    ├── index.css           # Diretivas Tailwind e classes utilitárias CRT
-    ├── main.jsx            # Ponto de inicialização do React DOM
-    ├── components/         # Componentes compartilhados
-    │   ├── CRTOverlay.jsx  # Efeito visual de tela e iluminação ambiente
-    │   ├── Header.jsx      # Topbar modular adaptável por página
-    │   └── Navbar.jsx      # Barra de navegação inferior (Mobile-First)
-    ├── context/
-    │   └── AuthContext.jsx # Provedor de contexto de sessão do operador
-    └── pages/              # Páginas e fluxos da aplicação
-        ├── AuthLogin.jsx
-        ├── DropAsset.jsx
-        ├── MarketFeed.jsx
-        ├── NegotiationDesk.jsx
-        ├── OperativeProfile.jsx
-        ├── ProductDetails.jsx
-        ├── SupportTicket.jsx
-        └── SystemGuide.jsx
+├── package.json            # Dependências e scripts
+├── postcss.config.js       # PostCSS para compilação do Tailwind
+├── tailwind.config.js      # Paleta neo-noir e tipografia
+├── vite.config.js          # Configuração do Vite
+├── server/                 # API REST (Express)
+│   ├── index.js            # Inicialização: carrega .env, roda a migração e sobe a API
+│   ├── app.js              # Middlewares (CORS, JSON, Passport) e tratamento de erros
+│   ├── auth.js             # Cadastro, login, JWT e perfis
+│   ├── resources.js        # Anúncios, jogos, ofertas, mensagens, tickets, pedidos, reembolsos...
+│   ├── schemas.js          # Validação Zod do lado do servidor
+│   ├── store.js            # Camada de dados (leitura/escrita do db.json)
+│   ├── migrate.js          # Ajustes automáticos no db.json (ex.: hash de senhas antigas)
+│   ├── alerts.js           # Regras dos alertas de preço
+│   ├── notify.js           # Criação de notificações
+│   ├── pix.js              # Gerador de PIX simulado
+│   ├── http.js             # Erros HTTP, filtros de consulta e helpers
+│   └── tests/
+│       └── api.test.mjs    # Testes de integração
+└── src/                    # Frontend (React)
+    ├── App.jsx             # Rotas e providers globais
+    ├── config.js           # URL da API
+    ├── components/         # Header, Navbar, CRTOverlay, RequireAuth, PriceBenchmark...
+    ├── context/            # AuthContext, CartContext, CrtContext
+    ├── hooks/              # Hooks de dados (useProducts, useOffers, useTickets...)
+    ├── pages/              # Telas da aplicação
+    ├── schemas/            # Schemas Zod dos formulários
+    ├── services/           # Cliente da API, token, benchmark de preço
+    └── utils/              # Formatação, endereço, PIX, alertas
 ```
 
 ---
@@ -70,52 +86,104 @@ SaveStateMarket/
 ## 🚀 Como Executar a Aplicação
 
 ### Pré-requisitos
-Certifique-se de possuir o [Node.js](https://nodejs.org/) (versão 18 ou superior) instalado em seu ambiente.
+- [Node.js](https://nodejs.org/) **20 ou superior** (o script da API usa `node --watch` e os testes usam `node --test`).
+- npm (instalado junto com o Node.js).
 
-### 1. Clonar ou Baixar o Repositório
+### 1. Clonar o repositório
 ```bash
-git clone [https://github.com/seu-usuario/SaveStateMarket.git](https://github.com/seu-usuario/SaveStateMarket.git)
+git clone <url-do-repositorio>
 cd SaveStateMarket
 ```
 
-### 2. Instalar as Dependências
-Na raiz do projeto, instale os pacotes definidos no `package.json`:
+### 2. Instalar as dependências
 ```bash
 npm install
 ```
 
-### 3. Executar o Servidor Mock e o Frontend
-Para rodar a API REST (`json-server`) e o servidor de desenvolvimento do Vite simultaneamente:
+### 3. Configurar as variáveis de ambiente
+Crie um arquivo `.env` na raiz do projeto a partir do modelo `env`:
+
+```bash
+# Linux / macOS / Git Bash
+cp env .env
+
+# Windows (PowerShell)
+Copy-Item env .env
+```
+
+Depois, defina um valor próprio para `SEGREDO` no `.env`.
+
+| Variável | Obrigatória | Padrão | Descrição |
+| :--- | :---: | :--- | :--- |
+| `SEGREDO` | ✅ | — | Segredo usado para assinar os tokens JWT. Sem ele a API não inicia. |
+| `PORT` | | `3001` | Porta da API. |
+| `CORS_ORIGIN` | | `http://localhost:5173` | Origem do frontend autorizada a chamar a API. |
+| `DB_PATH` | | `db.json` | Caminho do arquivo de banco de dados. |
+
+> Se mudar a porta da API, atualize também `API_URL` em `src/config.js`.
+
+### 4. Subir a API e o frontend
+Para rodar os dois juntos em um único terminal:
 ```bash
 npm run full-dev
 ```
 
-### 4. Acessar no Navegador
-- **Interface Web (React/Vite):** [`http://localhost:5173`](http://localhost:5173)
-- **API REST Mock (JSON Server):** [`http://localhost:3001`](http://localhost:3001)
+Ou, se preferir, em dois terminais separados:
+```bash
+npm run server   # API Express em http://localhost:3001 (reinicia ao salvar arquivos)
+npm run dev      # Frontend Vite em http://localhost:5173
+```
 
-> **Endpoints disponíveis na API:**
-> - `GET / POST / PATCH` → `http://localhost:3001/products`
-> - `GET / POST / PATCH` → `http://localhost:3001/profiles`
-> - `GET / POST / PATCH` → `http://localhost:3001/profile_reviews`
-> - `POST` → `http://localhost:3001/tickets`
-> - `GET / POST / PATCH` → `http://localhost:3001/orders`
-> - `GET / POST / PATCH` → `http://localhost:3001/refunds`
+Na primeira execução, a API ajusta o `db.json` automaticamente (por exemplo, converte senhas antigas em hash bcrypt).
+
+### 5. Acessar no navegador
+- **Interface Web:** [`http://localhost:5173`](http://localhost:5173)
+- **API REST:** [`http://localhost:3001`](http://localhost:3001) (responde `{"api":"SaveState Market","status":"online"}`)
+
+Crie uma conta em **/cadastrar** e depois entre em **/entrar** para usar as áreas protegidas (vender, negociar, checkout e notificações).
+
+### Outros scripts
+| Comando | Descrição |
+| :--- | :--- |
+| `npm test` | Executa os testes de integração da API (usam um banco temporário, sem alterar o `db.json`). |
+| `npm run build` | Gera o build de produção do frontend em `dist/`. |
+
+---
+
+## 🔌 Endpoints da API
+
+Rotas marcadas com 🔒 exigem o cabeçalho `Authorization: Bearer <token>`. As rotas de listagem aceitam filtros `?campo=valor`, além de `_sort`, `_order` e `_limit`.
+
+| Recurso | Endpoints |
+| :--- | :--- |
+| **Autenticação** | `POST /usuarios` (cadastro) · `POST /login` · 🔒 `GET/PATCH /usuarios/me` |
+| **Perfis públicos** | `GET /usuarios` · `GET /profiles` · `GET /profiles/:id` · 🔒 `PATCH /profiles/:id` (só o próprio) |
+| **Anúncios** | `GET /products` · `GET /products/:id` · 🔒 `POST /products` · 🔒 `PATCH/DELETE /products/:id` (só o anunciante) |
+| **Catálogo de jogos** | `GET /games` · `GET /games/:id` (somente leitura) |
+| **Referência de preço** | `GET/POST /price_references` · `PATCH /price_references/:id` |
+| **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` |
+| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` |
+| **Mensagens** | 🔒 `GET/POST /messages` |
+| **Tickets** | `POST /tickets` (visitantes também) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
+| **Notificações** | 🔒 `GET /notifications` · 🔒 `PATCH/DELETE /notifications/:id` |
+| **Alertas de preço** | 🔒 `GET/POST /price_alerts` · 🔒 `PATCH/DELETE /price_alerts/:id` |
+| **Pedidos** | 🔒 `GET/POST /orders` · 🔒 `GET/PATCH /orders/:id` |
+| **Reembolsos** | 🔒 `GET/POST /refunds` · 🔒 `PATCH /refunds/:id` |
+
+Respostas de erro seguem o padrão `{ "message": "...", "field": "..." }`, com `400` (dados inválidos), `401` (sem token ou token inválido), `403` (registro de outra pessoa), `404` (não encontrado) e `409` (conflito).
 
 ---
 
 ## 👥 Equipe de Desenvolvimento
 
-Projeto desenvolvido para fins acadêmicos como requisito de avaliação da disciplina de Programação Web:
+Projeto desenvolvido para fins acadêmicos como requisito de avaliação da disciplina de Programação Web (Grupo 3):
 
-- **Desenvolvedor 1** -  Luciano Mello
-- **Desenvolvedor 2** -  Matheus Dinis
-- **Desenvolvedor 3** -  Bernardo Borio
-
-Obs: Os pushs foram feitos somente por uma pessoa pois utilizamos o Live-share para codar juntos.
+- **Bernardo Dias Borio**
+- **Luciano Cunha Damaso Mello**
+- **Matheus Dinis Francellino**
 
 ---
 
 ## 📜 Licença
 
-Este projeto é de uso acadêmico e educacional, distribuído sob a licença **MIT**. Consulte o arquivo de licença para mais detalhes.
+Este projeto é de uso acadêmico e educacional, distribuído sob a licença **MIT**.
