@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { offersApi, messagesApi } from "../services/api";
-import { deleteOfferCascade, notifyUser } from "../services/domain";
+import { deleteOfferCascade } from "../services/domain";
 
 export const useOffers = () =>
   useQuery({ queryKey: ["offers"], queryFn: offersApi.list });
@@ -21,38 +21,33 @@ export const useSendMessage = () => {
   });
 };
 
-// Abre a negociação: grava a oferta, a primeira mensagem e avisa o vendedor.
+// Abre a negociação. O servidor grava a oferta e avisa o vendedor;
+// a primeira mensagem vai com o id que o servidor gerou.
 export const useCreateOffer = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ offer, firstMessage }) => {
       const created = await offersApi.create(offer);
-      await messagesApi.create(firstMessage);
-      await notifyUser(offer.seller_id, {
-        type: "OFFER",
-        title: offer.status === "ACCEPTED" ? "Compra direta confirmada" : "Nova proposta recebida",
-        body: `${offer.buyer_handle} ${offer.status === "ACCEPTED" ? "comprou" : "ofereceu R$ " + Number(offer.offered_price).toFixed(2) + " por"} "${offer.product_title}".`,
-        link: "/offers",
-      });
+      if (firstMessage?.text) {
+        await messagesApi.create({ offer_id: created.id, text: firstMessage.text });
+      }
       return created;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offers"] }),
   });
 };
 
-// Altera o estado da oferta, registra a nota do sistema e avisa a outra parte.
+// Altera o estado da oferta. A nota do sistema e a notificação da outra parte
+// agora são feitas pelo servidor (systemMessage e notification são ignorados).
 export const useUpdateOffer = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, patch, systemMessage, notification }) => {
-      const updated = await offersApi.update(id, patch);
-      await messagesApi.create(systemMessage);
-      if (notification) await notifyUser(notification.user_id, notification);
-      return updated;
-    },
+    mutationFn: ({ id, patch }) =>
+      offersApi.update(id, { status: patch.status, offered_price: patch.offered_price }),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["offers"] });
       queryClient.invalidateQueries({ queryKey: ["messages", updated.id] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 };

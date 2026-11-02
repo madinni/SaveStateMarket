@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
+import { useGames } from "../hooks/useGames";
 import {
   useNotifications,
   useMarkRead,
@@ -16,33 +17,38 @@ import {
   useUpdateAlert,
   useDeleteAlert,
 } from "../hooks/useNotifications";
-import { makeAlertSchema, makeNewAlertSchema } from "../schemas";
+import { alertSchema, alertTargetSchema, PLATFORMS } from "../schemas";
+import { listingsForAlert, normalizeAlertTitle } from "../utils/alerts";
 
-const TYPE_ICON = { OFFER: "◈", PRICE_ALERT: "▼", REVIEW: "★" };
+const TYPE_ICON = { OFFER: "◈", PRICE_ALERT: "▼", REVIEW: "★", ORDER: "▣", REFUND: "↺" };
 const TYPE_COLOR = {
   OFFER: "text-neon-cyan",
   PRICE_ALERT: "text-neon-amber",
   REVIEW: "text-neon-mint",
+  ORDER: "text-neon-mint",
+  REFUND: "text-neon-pink",
 };
 
 const brl = (v) => `R$ ${Number(v).toFixed(2)}`;
 const when = (iso) =>
   new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+const inputClass =
+  "w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber";
 
-function AlertRow({ alert, product, busy, onUpdate, onDelete }) {
+function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false);
-  const currentPrice = Number(product?.price ?? alert.price_at_creation);
-  const schema = useMemo(() => makeAlertSchema(currentPrice), [currentPrice]);
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm({ resolver: zodResolver(schema), defaultValues: { target_price: alert.target_price } });
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+    resolver: zodResolver(alertTargetSchema),
+    defaultValues: { target_price: alert.target_price },
+  });
+
+  const listings = listingsForAlert(alert, products, userId).sort((a, b) => a.price - b.price);
+  const cheapest = listings[0];
+  const triggeredProduct = products.find((p) => String(p.id) === String(alert.triggered_product_id));
 
   const submit = async ({ target_price }) => {
-    // Alterar o alvo de um alerta já disparado o reativa.
-    await onUpdate(alert.id, { target_price, active: true, triggered_at: null, triggered_price: null });
+    // Alterar o alvo de um alerta já disparado o reativa (o servidor confere os anúncios na hora).
+    await onUpdate(alert.id, { target_price, active: true });
     setEditing(false);
   };
 
@@ -50,16 +56,20 @@ function AlertRow({ alert, product, busy, onUpdate, onDelete }) {
     <div className="bg-noir-900 border border-noir-800 p-3 chamfer-box space-y-2 text-xs">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          {product ? (
-            <Link to={`/product/${product.id}`} className="font-bold text-white hover:text-neon-pink truncate block">
-              {alert.product_title}
-            </Link>
-          ) : (
-            <span className="font-bold text-slate-500 line-through">{alert.product_title}</span>
-          )}
+          <p className="font-bold text-white truncate">{alert.title}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            ALVO: <strong className="text-neon-mint">{brl(alert.target_price)}</strong> | PREÇO ATUAL:{" "}
-            {product ? brl(product.price) : "anúncio removido"}
+            {alert.platform || "QUALQUER PLATAFORMA"} · ALVO: <strong className="text-neon-mint">{brl(alert.target_price)}</strong>
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {cheapest ? (
+              <>
+                MENOR ANÚNCIO AGORA:{" "}
+                <Link to={`/product/${cheapest.id}`} className="text-neon-cyan underline">{brl(cheapest.price)}</Link>
+                {listings.length > 1 ? ` (${listings.length} anúncios)` : ""}
+              </>
+            ) : (
+              "NENHUM ANÚNCIO DESTE TÍTULO NO MOMENTO"
+            )}
           </p>
         </div>
         <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-bold ${alert.active ? "border-neon-amber text-neon-amber" : "border-neon-mint text-neon-mint"}`}>
@@ -69,14 +79,16 @@ function AlertRow({ alert, product, busy, onUpdate, onDelete }) {
 
       {!alert.active && alert.triggered_at && (
         <p className="text-[10px] text-slate-400">
-          Disparado em {when(alert.triggered_at)} com o preço em {brl(alert.triggered_price)}.
+          Disparado em {when(alert.triggered_at)} com um anúncio a {brl(alert.triggered_price)}.{" "}
+          {triggeredProduct && (
+            <Link to={`/product/${triggeredProduct.id}`} className="text-neon-cyan underline">ver anúncio</Link>
+          )}
         </p>
       )}
 
       {editing ? (
         <form onSubmit={handleSubmit(submit)} noValidate className="space-y-2">
-          <input type="number" step="0.01" aria-label="Novo alvo" {...register("target_price")}
-            className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber" />
+          <input type="number" step="0.01" aria-label="Novo alvo" {...register("target_price")} className={inputClass} />
           <FieldError error={errors.target_price} />
           <div className="flex gap-2">
             <button type="button" onClick={() => { setEditing(false); reset({ target_price: alert.target_price }); }}
@@ -90,12 +102,10 @@ function AlertRow({ alert, product, busy, onUpdate, onDelete }) {
         </form>
       ) : (
         <div className="flex gap-2">
-          {product && (
-            <button type="button" onClick={() => setEditing(true)}
-              className="px-2.5 py-1 border border-neon-cyan text-neon-cyan text-[10px] font-bold">
-              {alert.active ? "ALTERAR ALVO" : "REATIVAR"}
-            </button>
-          )}
+          <button type="button" onClick={() => setEditing(true)}
+            className="px-2.5 py-1 border border-neon-cyan text-neon-cyan text-[10px] font-bold">
+            {alert.active ? "ALTERAR ALVO" : "REATIVAR"}
+          </button>
           <button type="button" onClick={() => onDelete(alert.id)} disabled={busy}
             className="px-2.5 py-1 border border-neon-pink text-neon-pink text-[10px] font-bold disabled:opacity-50">
             REMOVER
@@ -106,49 +116,50 @@ function AlertRow({ alert, product, busy, onUpdate, onDelete }) {
   );
 }
 
-function NewAlertForm({ user, products, alerts }) {
+// Novo alerta pelo TÍTULO do jogo. Ex.: "GTA VI" até R$ 200, mesmo sem anúncio publicado.
+function NewAlertForm() {
   const createAlert = useCreateAlert();
+  const { data: games = [] } = useGames();
   const [error, setError] = useState("");
   const [created, setCreated] = useState("");
 
-  // Só entram anúncios de outros vendedores que ainda não têm alerta ativo.
-  const eligible = useMemo(
-    () =>
-      products.filter(
-        (p) =>
-          p.seller_id !== user.id &&
-          p.seller_handle !== user.handle &&
-          !alerts.some((a) => a.product_id === p.id && a.active),
-      ),
-    [products, alerts, user],
+  const titles = useMemo(() => [...new Set(games.map((g) => g.title))].sort(), [games]);
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
+    resolver: zodResolver(alertSchema),
+    defaultValues: { title: "", platform: "", target_price: "" },
+  });
+
+  // Se o título existe no catálogo, só aparecem as plataformas em que o jogo existe.
+  // Título fora do catálogo (ex.: lançamento novo) libera todas as plataformas.
+  const typedTitle = normalizeAlertTitle(watch("title"));
+  const selectedPlatform = watch("platform");
+  const catalogPlatforms = useMemo(
+    () => [...new Set(games.filter((g) => normalizeAlertTitle(g.title) === typedTitle).map((g) => g.platform))],
+    [games, typedTitle],
   );
-  const schema = useMemo(() => makeNewAlertSchema(eligible), [eligible]);
-  const {
-    register,
-    handleSubmit,
-    reset,
-    watch,
-    formState: { errors },
-  } = useForm({ resolver: zodResolver(schema), defaultValues: { product_id: "", target_price: "" } });
+  const platformOptions = catalogPlatforms.length
+    ? PLATFORMS.filter((p) => catalogPlatforms.includes(p.value))
+        .concat(catalogPlatforms.filter((v) => !PLATFORMS.some((p) => p.value === v)).map((v) => ({ value: v, label: v })))
+    : PLATFORMS;
 
-  const selected = eligible.find((p) => String(p.id) === watch("product_id"));
+  // Trocou o título e a plataforma escolhida não vale mais para ele: volta para "qualquer".
+  useEffect(() => {
+    if (selectedPlatform && !platformOptions.some((p) => p.value === selectedPlatform)) {
+      setValue("platform", "");
+    }
+  }, [platformOptions, selectedPlatform, setValue]);
 
-  const onSubmit = async ({ product_id, target_price }) => {
+  const onSubmit = async ({ title, platform, target_price }) => {
     setError("");
     setCreated("");
-    const product = eligible.find((p) => String(p.id) === product_id);
     try {
-      await createAlert.mutateAsync({
-        user_id: user.id,
-        product_id: product.id,
-        product_title: product.title,
-        target_price,
-        price_at_creation: Number(product.price),
-        active: true,
-        created_at: new Date().toISOString(),
-      });
-      setCreated(`Alerta criado para "${product.title}".`);
-      reset({ product_id: "", target_price: "" });
+      const alert = await createAlert.mutateAsync({ title, platform: platform || null, target_price });
+      setCreated(
+        alert.active
+          ? `Alerta criado: avisaremos quando "${alert.title}" estiver por ${brl(alert.target_price)} ou menos.`
+          : `Já existe um anúncio de "${alert.title}" no seu alvo! Confira suas notificações.`,
+      );
+      reset({ title: "", platform: "", target_price: "" });
     } catch (err) {
       setError(err.message || "Não foi possível criar o alerta.");
     }
@@ -159,41 +170,39 @@ function NewAlertForm({ user, products, alerts }) {
       className="bg-noir-900 border border-neon-amber/50 p-3 chamfer-box space-y-3 text-xs">
       <p className="text-neon-amber font-bold">▼ NOVO ALERTA DE PREÇO</p>
 
-      {eligible.length === 0 ? (
-        <p className="text-slate-400">
-          Não há anúncios disponíveis para novos alertas: você já acompanha todos os anúncios de outros vendedores.
-        </p>
-      ) : (
-        <>
-          <div>
-            <label htmlFor="new-alert-product" className="block text-[10px] text-slate-400 mb-1">ANÚNCIO</label>
-            <select id="new-alert-product" {...register("product_id")}
-              className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber">
-              <option value="">Selecione um anúncio...</option>
-              {eligible.map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.title} — {brl(p.price)}
-                </option>
-              ))}
-            </select>
-            <FieldError error={errors.product_id} />
-          </div>
+      <div>
+        <label htmlFor="new-alert-title" className="block text-[10px] text-slate-400 mb-1">TÍTULO DO JOGO</label>
+        <input id="new-alert-title" list="alert-title-options" placeholder="Ex: GTA VI" autoComplete="off"
+          {...register("title")} className={inputClass} />
+        <datalist id="alert-title-options">
+          {titles.map((t) => <option key={t} value={t} />)}
+        </datalist>
+        <FieldError error={errors.title} />
+      </div>
 
-          <div>
-            <label htmlFor="new-alert-target" className="block text-[10px] text-slate-400 mb-1">
-              ME AVISE QUANDO O PREÇO CHEGAR A (R$){selected ? ` — ATUAL: ${brl(selected.price)}` : ""}
-            </label>
-            <input id="new-alert-target" type="number" step="0.01" {...register("target_price")}
-              className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber" />
-            <FieldError error={errors.target_price} />
-          </div>
+      <div>
+        <label htmlFor="new-alert-platform" className="block text-[10px] text-slate-400 mb-1">PLATAFORMA (OPCIONAL)</label>
+        <select id="new-alert-platform" {...register("platform")} className={inputClass}>
+          <option value="">
+            {catalogPlatforms.length === 1 ? `Qualquer (só existe em ${platformOptions[0].label})` : "Qualquer plataforma"}
+          </option>
+          {platformOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+        {catalogPlatforms.length > 0 && (
+          <p className="mt-1 text-[10px] text-slate-500">Plataformas em que este jogo existe no catálogo.</p>
+        )}
+      </div>
 
-          <button type="submit" disabled={createAlert.isPending}
-            className="w-full py-2 bg-neon-amber text-noir-950 text-[11px] font-black disabled:opacity-50">
-            {createAlert.isPending ? "CRIANDO..." : "ATIVAR ALERTA"}
-          </button>
-        </>
-      )}
+      <div>
+        <label htmlFor="new-alert-target" className="block text-[10px] text-slate-400 mb-1">ME AVISE QUANDO HOUVER ANÚNCIO POR ATÉ (R$)</label>
+        <input id="new-alert-target" type="number" step="0.01" placeholder="Ex: 200" {...register("target_price")} className={inputClass} />
+        <FieldError error={errors.target_price} />
+      </div>
+
+      <button type="submit" disabled={createAlert.isPending}
+        className="w-full py-2 bg-neon-amber text-noir-950 text-[11px] font-black disabled:opacity-50">
+        {createAlert.isPending ? "CRIANDO..." : "ATIVAR ALERTA"}
+      </button>
 
       {error && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {error}</p>}
       {created && <p role="status" className="text-[11px] font-bold text-neon-mint">✓ {created}</p>}
@@ -216,11 +225,8 @@ export default function NotificationsPage() {
   const updateAlert = useUpdateAlert();
   const deleteAlert = useDeleteAlert();
 
-  if (!user) return <Navigate to="/login" replace />;
-
   const unread = notifications.filter((n) => !n.read);
   const read = notifications.filter((n) => n.read);
-  const productById = (id) => products.find((p) => String(p.id) === String(id));
 
   const run = async (action) => {
     setError("");
@@ -319,20 +325,25 @@ export default function NotificationsPage() {
         ) : (
           <section className="space-y-3">
             <p className="text-[11px] text-slate-400">
-              Crie alertas na página de um anúncio. Quando o vendedor baixar o preço até o seu alvo,
-              você recebe uma notificação aqui. Também é possível criar um alerta pelo formulário abaixo.
+              O alerta é do jogo, não de um anúncio: quando qualquer vendedor anunciar o título pelo seu
+              preço alvo ou menos, você recebe uma notificação aqui.
             </p>
-            <NewAlertForm user={user} products={products} alerts={alerts} />
+            <NewAlertForm />
             {alerts.length === 0 ? (
               <div className="text-center py-12 bg-noir-900/40 border border-dashed border-noir-800 text-xs text-slate-500">
                 NENHUM ALERTA DE PREÇO CRIADO.
               </div>
             ) : (
-              alerts.map((a) => (
-                <AlertRow key={a.id} alert={a} product={productById(a.product_id)}
+              alerts.map((alert) => (
+                <AlertRow
+                  key={alert.id}
+                  alert={alert}
+                  products={products}
+                  userId={user.id}
                   busy={updateAlert.isPending || deleteAlert.isPending}
                   onUpdate={(id, data) => run(() => updateAlert.mutateAsync({ id, data }))}
-                  onDelete={(id) => run(() => deleteAlert.mutateAsync(id))} />
+                  onDelete={(id) => run(() => deleteAlert.mutateAsync(id))}
+                />
               ))
             )}
           </section>

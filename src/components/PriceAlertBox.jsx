@@ -1,22 +1,21 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../context/AuthContext";
-import {
-  useMyAlerts,
-  useCreateAlert,
-  useUpdateAlert,
-  useDeleteAlert,
-} from "../hooks/useNotifications";
-import { makeAlertSchema } from "../schemas";
+import { useMyAlerts, useCreateAlert, useUpdateAlert, useDeleteAlert } from "../hooks/useNotifications";
+import { alertTargetSchema } from "../schemas";
+import { normalizeAlertTitle } from "../utils/alerts";
 import FieldError from "./FieldError";
 
 const brl = (v) => `R$ ${Number(v).toFixed(2)}`;
 
+// O alerta é do JOGO (título), não deste anúncio: avisa quando qualquer
+// anúncio do título aparecer pelo preço alvo ou menos.
 export default function PriceAlertBox({ product }) {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
+  const [samePlatform, setSamePlatform] = useState(true);
   const [error, setError] = useState("");
 
   const { data: alerts = [] } = useMyAlerts(user?.id);
@@ -24,16 +23,15 @@ export default function PriceAlertBox({ product }) {
   const updateAlert = useUpdateAlert();
   const deleteAlert = useDeleteAlert();
 
-  const currentPrice = Number(product.price);
-  const schema = useMemo(() => makeAlertSchema(currentPrice), [currentPrice]);
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm({ resolver: zodResolver(schema), defaultValues: { target_price: "" } });
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+    resolver: zodResolver(alertTargetSchema),
+    defaultValues: { target_price: "" },
+  });
 
-  const active = alerts.find((a) => a.product_id === product.id && a.active);
+  const key = normalizeAlertTitle(product.title);
+  const active = alerts.find(
+    (a) => a.active && normalizeAlertTitle(a.title) === key && (!a.platform || a.platform === product.platform),
+  );
   const busy = createAlert.isPending || updateAlert.isPending || deleteAlert.isPending;
 
   const onSubmit = async ({ target_price }) => {
@@ -43,17 +41,13 @@ export default function PriceAlertBox({ product }) {
         await updateAlert.mutateAsync({ id: active.id, data: { target_price } });
       } else {
         await createAlert.mutateAsync({
-          user_id: user.id,
-          product_id: product.id,
-          product_title: product.title,
+          title: product.title,
+          platform: samePlatform ? product.platform : null,
           target_price,
-          price_at_creation: currentPrice,
-          active: true,
-          created_at: new Date().toISOString(),
         });
       }
       setEditing(false);
-      reset();
+      reset({ target_price: "" });
     } catch (err) {
       setError(err.message || "Não foi possível salvar o alerta.");
     }
@@ -71,8 +65,8 @@ export default function PriceAlertBox({ product }) {
   if (!user) {
     return (
       <p className="text-[11px] text-slate-400 bg-noir-950 border border-slate-800 p-3">
-        <Link to="/login" className="text-neon-cyan underline font-bold">Faça login</Link>{" "}
-        para criar um alerta de preço neste anúncio.
+        <Link to="/entrar" className="text-neon-cyan underline font-bold">Entre</Link>{" "}
+        para criar um alerta de preço para "{product.title}".
       </p>
     );
   }
@@ -80,14 +74,15 @@ export default function PriceAlertBox({ product }) {
   return (
     <div className="bg-noir-950 border border-slate-800 p-3 space-y-2 text-xs">
       <div className="flex items-center justify-between">
-        <span className="text-neon-amber font-bold">▼ ALERTA DE PREÇO</span>
-        <Link to="/notifications" className="text-[10px] text-neon-cyan underline">ver notificações</Link>
+        <span className="text-neon-amber font-bold">▼ ALERTA DE PREÇO DO JOGO</span>
+        <Link to="/notifications" className="text-[10px] text-neon-cyan underline">meus alertas</Link>
       </div>
 
       {active && !editing ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-slate-300">
-            Avisaremos quando o preço chegar a <strong className="text-neon-mint">{brl(active.target_price)}</strong> ou menos.
+            Avisaremos quando houver "{active.title}"{active.platform ? ` (${active.platform})` : ""} por{" "}
+            <strong className="text-neon-mint">{brl(active.target_price)}</strong> ou menos.
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={() => { setEditing(true); reset({ target_price: active.target_price }); }}
@@ -100,21 +95,30 @@ export default function PriceAlertBox({ product }) {
             </button>
           </div>
         </div>
-      ) : !active && !editing ? (
+      ) : !editing ? (
         <button type="button" onClick={() => setEditing(true)}
           className="w-full py-2 border border-neon-amber text-neon-amber font-bold text-[11px] hover:bg-neon-amber/10">
-          CRIAR ALERTA DE PREÇO
+          AVISAR QUANDO "{product.title.toUpperCase()}" BAIXAR DE PREÇO
         </button>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-2">
           <label htmlFor="alert-target" className="block text-[10px] text-slate-400">
-            ME AVISE QUANDO O PREÇO CHEGAR A (R$) — ATUAL: {brl(currentPrice)}
+            ME AVISE QUANDO "{product.title}" ESTIVER POR ATÉ (R$) — ESTE ANÚNCIO: {brl(product.price)}
           </label>
           <input id="alert-target" type="number" step="0.01" {...register("target_price")}
             className="w-full bg-noir-900 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber" />
           <FieldError error={errors.target_price} />
+          {!active && (
+            <label className="flex items-center gap-2 text-[10px] text-slate-300">
+              <input type="checkbox" checked={samePlatform} onChange={(e) => setSamePlatform(e.target.checked)} />
+              Só na plataforma {product.platform}
+            </label>
+          )}
+          <p className="text-[10px] text-slate-500">
+            Se o alvo for igual ou maior que um anúncio já publicado, o alerta dispara na hora.
+          </p>
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setEditing(false); reset(); }}
+            <button type="button" onClick={() => { setEditing(false); reset({ target_price: "" }); }}
               className="flex-1 py-1.5 bg-noir-800 text-slate-300 border border-slate-600 text-[11px] font-bold">
               CANCELAR
             </button>

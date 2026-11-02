@@ -1,20 +1,71 @@
 import { API_URL } from "../config";
+import { getToken } from "./tokenStorage";
 
+// Erro com o status HTTP e a mensagem que o servidor mandou.
+export class ApiError extends Error {
+  constructor(status, message, field) {
+    super(message);
+    this.status = status;
+    this.field = field;
+  }
+}
+
+const emit = (name) => window.dispatchEvent(new Event(name));
+
+// Todo fetch protegido leva o cabeçalho Authorization: Bearer <token>.
 async function request(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const token = getToken();
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, "Servidor indisponível. Verifique se a API está rodando (npm run server).");
+  }
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
 
   if (!response.ok) {
-    throw new Error(`Falha na comunicação com o servidor (HTTP ${response.status}).`);
+    // Token vencido ou adulterado: o AuthContext apaga o token e manda para /entrar.
+    if (response.status === 401 && token) emit("auth:unauthorized");
+    throw new ApiError(
+      response.status,
+      data?.message || `Falha na comunicação com o servidor (HTTP ${response.status}).`,
+      data?.field,
+    );
   }
-  return response.json();
+  return data;
 }
 
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 const q = (value) => encodeURIComponent(value);
 const NEWEST_FIRST = "_sort=created_at&_order=desc";
+
+// Ações que mudam o status da conta no servidor pedem para o AuthContext recarregar /usuarios/me.
+const andRefreshMe = (promise) =>
+  promise.then((result) => {
+    emit("auth:refresh");
+    return result;
+  });
+
+export const authApi = {
+  register: (data) => request("/usuarios", json("POST", data)),
+  login: (data) => request("/login", json("POST", data)),
+  me: () => request("/usuarios/me"),
+  updateMe: (data) => request("/usuarios/me", json("PATCH", data)),
+};
 
 export const productsApi = {
   list: () => request(`/products?${NEWEST_FIRST}`),
@@ -33,17 +84,15 @@ export const ordersApi = {
 
 export const refundsApi = {
   list: () => request("/refunds"),
-  create: (data) => request("/refunds", json("POST", data)),
-  update: (id, data) => request(`/refunds/${id}`, json("PATCH", data)),
+  create: (data) => andRefreshMe(request("/refunds", json("POST", data))),
+  update: (id, data) => andRefreshMe(request(`/refunds/${id}`, json("PATCH", data))),
 };
 
+// Perfis públicos. Alterar só vale para o próprio perfil (o servidor decide quem é pelo token).
 export const profilesApi = {
   list: () => request("/profiles"),
-  // A senha nunca vai na URL: busca-se apenas pelo e-mail e confere-se no cliente.
-  findByEmail: (email) => request(`/profiles?email=${q(email)}`),
-  findByHandle: (handle) => request(`/profiles?handle=${q(handle)}`),
-  create: (data) => request("/profiles", json("POST", data)),
-  update: (id, data) => request(`/profiles/${id}`, json("PATCH", data)),
+  get: (id) => request(`/profiles/${id}`),
+  update: (_id, data) => request("/usuarios/me", json("PATCH", data)),
 };
 
 export const reviewsApi = {
@@ -53,8 +102,9 @@ export const reviewsApi = {
   update: (id, data) => request(`/profile_reviews/${id}`, json("PATCH", data)),
 };
 
+// O servidor já devolve só os tickets de quem está logado.
 export const ticketsApi = {
-  listByAuthor: (authorId) => request(`/tickets?author_id=${q(authorId)}&${NEWEST_FIRST}`),
+  listByAuthor: () => request(`/tickets?${NEWEST_FIRST}`),
   create: (data) => request("/tickets", json("POST", data)),
   update: (id, data) => request(`/tickets/${id}`, json("PATCH", data)),
   remove: (id) => request(`/tickets/${id}`, { method: "DELETE" }),
@@ -68,25 +118,23 @@ export const offersApi = {
   remove: (id) => request(`/offers/${id}`, { method: "DELETE" }),
 };
 
+// Mensagens são imutáveis; somem junto com a negociação.
 export const messagesApi = {
   listByOffer: (offerId) => request(`/messages?offer_id=${q(offerId)}`),
   create: (data) => request("/messages", json("POST", data)),
-  remove: (id) => request(`/messages/${id}`, { method: "DELETE" }),
 };
 
+// Alertas por título. O servidor filtra pelo dono do token.
 export const alertsApi = {
-  listByUser: (userId) => request(`/price_alerts?user_id=${q(userId)}&${NEWEST_FIRST}`),
-  listByProduct: (productId) => request(`/price_alerts?product_id=${q(productId)}`),
-  listActiveByProduct: (productId) =>
-    request(`/price_alerts?product_id=${q(productId)}&active=true`),
+  listMine: () => request(`/price_alerts?${NEWEST_FIRST}`),
   create: (data) => request("/price_alerts", json("POST", data)),
   update: (id, data) => request(`/price_alerts/${id}`, json("PATCH", data)),
   remove: (id) => request(`/price_alerts/${id}`, { method: "DELETE" }),
 };
 
+// Notificações são criadas só pelo servidor.
 export const notificationsApi = {
-  listByUser: (userId) => request(`/notifications?user_id=${q(userId)}&${NEWEST_FIRST}`),
-  create: (data) => request("/notifications", json("POST", data)),
+  listMine: () => request(`/notifications?${NEWEST_FIRST}`),
   update: (id, data) => request(`/notifications/${id}`, json("PATCH", data)),
   remove: (id) => request(`/notifications/${id}`, { method: "DELETE" }),
 };
@@ -94,12 +142,9 @@ export const notificationsApi = {
 export const gamesApi = {
   list: () => request("/games?_sort=title&_order=asc"),
   get: (id) => request(`/games/${id}`),
-  create: (data) => request("/games", json("POST", data)),
-  update: (id, data) => request(`/games/${id}`, json("PATCH", data)),
-  remove: (id) => request(`/games/${id}`, { method: "DELETE" }),
 };
 
-// Cache local (json-server) das referências de preço externas.
+// Cache das referências de preço externas (CheapShark).
 export const priceRefsApi = {
   findByKey: (key) => request(`/price_references?ref_key=${encodeURIComponent(key)}`),
   create: (data) => request("/price_references", json("POST", data)),

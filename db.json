@@ -4,7 +4,7 @@
       "id": "7d8cd670-0000-0000-0000-000000000000",
       "handle": "@K3nji_Zero",
       "email": "k3nji@null-exchange.net",
-      "password_hash": "supersecretpassword",
+      "password_hash": "$2b$10$35DQPpti8VZUAovvW3R6L.xvhXXR2tmCGdpaNqPIl6YJTl2RvBTLW",
       "reputation": 5,
       "total_transactions": 42,
       "success_rate": 98.4,
@@ -26,7 +26,7 @@
       "id": "8f31c92a-0000-0000-0000-000000000001",
       "handle": "@Lume",
       "email": "lume@null-exchange.net",
-      "password_hash": "123456",
+      "password_hash": "$2b$10$vuwp5MGwj35QoEPPorK3/e92E9AQ2aa.rqCKR5xLp.j2vUFfna7cG",
       "reputation": 5,
       "total_transactions": 15,
       "success_rate": 100,
@@ -41,7 +41,8 @@
         "neighborhood": "Tijuca",
         "city": "Rio de Janeiro",
         "state": "Rj"
-      }
+      },
+      "account_status": "active"
     }
   ],
   "orders": [
@@ -119,8 +120,12 @@
       "seller_handle": "@K3nji_Zero",
       "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
       "buyer_handle": "@Lume",
-      "item_ids": ["prod-002"],
-      "item_titles": ["Super Mario World"],
+      "item_ids": [
+        "prod-002"
+      ],
+      "item_titles": [
+        "Super Mario World"
+      ],
       "amount": 95,
       "payment_method": "PIX",
       "status": "paid",
@@ -349,7 +354,7 @@
       "ref_key": "gran turismo 2",
       "title": "Gran Turismo 2",
       "source": "CheapShark",
-      "fetched_at": "2026-10-31T15:29:00.298Z",
+      "fetched_at": "2026-11-02T21:29:56.628Z",
       "found": false,
       "source_game_id": null,
       "matched_title": null,
@@ -364,7 +369,7 @@
       "ref_key": "the legend of zelda ocarina of time",
       "title": "The Legend of Zelda: Ocarina of Time",
       "source": "CheapShark",
-      "fetched_at": "2026-10-31T15:29:00.342Z",
+      "fetched_at": "2026-11-02T21:29:56.619Z",
       "found": false,
       "source_game_id": null,
       "matched_title": null,
@@ -394,30 +399,30 @@
       "ref_key": "chrono trigger",
       "title": "Chrono Trigger",
       "source": "CheapShark",
-      "fetched_at": "2026-10-31T15:29:00.384Z",
+      "fetched_at": "2026-11-02T21:29:56.654Z",
       "found": true,
       "source_game_id": "178613",
       "matched_title": "CHRONO TRIGGER",
       "steam_app_id": "613830",
       "price_usd": 14.99,
-      "usd_brl": 5.4397,
+      "usd_brl": 5.4366,
       "fx_estimated": false,
-      "price_brl": 81.54,
+      "price_brl": 81.49,
       "id": 4
     },
     {
       "ref_key": "crash bandicoot",
       "title": "Crash Bandicoot",
       "source": "CheapShark",
-      "fetched_at": "2026-10-31T15:29:00.384Z",
+      "fetched_at": "2026-11-02T21:29:56.470Z",
       "found": true,
       "source_game_id": "179004",
       "matched_title": "Crash Bandicoot N. Sane Trilogy",
       "steam_app_id": "731490",
       "price_usd": 39.99,
-      "usd_brl": 5.4397,
+      "usd_brl": 5.4366,
       "fx_estimated": false,
-      "price_brl": 217.53,
+      "price_brl": 217.41,
       "id": 5
     },
     {
@@ -545,5 +550,7 @@
       "text": "[SISTEMA]: Pagamento PIX simulado confirmado no valor de R$ 350.00.",
       "timestamp": "2026-11-01T01:15:58.761Z"
     }
-  ]
+  ],
+  "notifications": [],
+  "price_alerts": []
 }

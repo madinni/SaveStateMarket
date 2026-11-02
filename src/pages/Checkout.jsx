@@ -5,18 +5,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import Header from "../components/Header";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
-import { ordersApi, productsApi } from "../services/api";
+import { ordersApi } from "../services/api";
 import { formatShippingAddress, hasShippingAddress } from "../utils/address";
-import { createDemoPixPayload } from "../utils/pix";
 
 const formatBRL = (amount) =>
   Number(amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-const createOrderId = () => {
-  const randomPart = globalThis.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 8)
-    || Math.random().toString(36).slice(2, 10).toUpperCase();
-  return `ORD-${Date.now().toString(36).toUpperCase()}-${randomPart}`;
-};
 
 export default function Checkout() {
   const { user, isProfileSynced } = useAuth();
@@ -31,8 +24,8 @@ export default function Checkout() {
   const [isCodeCopied, setIsCodeCopied] = useState(false);
   const [actionError, setActionError] = useState("");
   const [pollingError, setPollingError] = useState("");
-  const [listingCleanupError, setListingCleanupError] = useState("");
 
+  // Estimativa para a tela; o total que vale é o calculado pelo servidor.
   const total = items.reduce(
     (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
     0,
@@ -57,11 +50,9 @@ export default function Checkout() {
           window.clearInterval(intervalId);
           setPaymentApproved(true);
           clearCart();
-
-          const productIds = [...new Set((latestOrder.items || []).map((item) => item.product_id).filter(Boolean))];
-          void Promise.all(productIds.map((productId) => productsApi.remove(productId)))
-            .then(() => queryClient.invalidateQueries({ queryKey: ["products"] }))
-            .catch(() => setListingCleanupError("Pagamento aprovado, mas alguns anúncios não puderam ser removidos."));
+          // Os anúncios vendidos já foram retirados do catálogo pelo servidor.
+          queryClient.invalidateQueries({ queryKey: ["products"] });
+          queryClient.invalidateQueries({ queryKey: ["orders"] });
         }
       } catch (error) {
         if (active) setPollingError(error.message || "Falha ao consultar o pedido.");
@@ -90,33 +81,10 @@ export default function Checkout() {
 
     setActionError("");
     setIsCreatingOrder(true);
-    const id = createOrderId();
-    const orderItems = items.map((item) => {
-      const quantity = Number(item.quantity || 1);
-      const unitPrice = Number(item.price || 0);
-      return {
-        product_id: item.id,
-        title: item.title,
-        platform: item.platform,
-        image_url: item.image_url,
-        seller_id: item.seller_id || null,
-        seller_handle: item.seller_handle || null,
-        quantity,
-        unit_price: unitPrice,
-        subtotal: unitPrice * quantity,
-      };
-    });
+    // O cliente manda só os anúncios e as quantidades. Preço, total, comprador,
+    // endereço e o PIX são definidos pelo servidor.
     const orderData = {
-      id,
-      items: orderItems,
-      total,
-      payment_method: "PIX",
-      status: "pending",
-      pix_copy_paste: createDemoPixPayload(total, id),
-      buyer_id: user.id,
-      buyer_handle: user.handle,
-      shipping_address: { ...user.shipping_address },
-      created_at: new Date().toISOString(),
+      items: items.map((item) => ({ product_id: item.id, quantity: Number(item.quantity || 1) })),
     };
 
     try {
@@ -144,10 +112,7 @@ export default function Checkout() {
     setActionError("");
     setIsSimulatingApproval(true);
     try {
-      await ordersApi.update(order.id, {
-        status: "approved",
-        approved_at: new Date().toISOString(),
-      });
+      await ordersApi.update(order.id, { status: "approved" });
     } catch (error) {
       setActionError(error.message || "Não foi possível simular a aprovação.");
     } finally {
@@ -169,7 +134,7 @@ export default function Checkout() {
         <Header title="PIX" titleHighlight="CHECKOUT" subtitle="AUTENTICAÇÃO NECESSÁRIA" backLink="/" backText="<< FEED" />
         <main className="max-w-md mx-auto px-4 pt-6 text-center space-y-4">
           <p className="text-xs text-slate-300">Entre na sua conta para continuar com o pagamento.</p>
-          <Link to="/login" className="inline-block px-4 py-2 bg-neon-cyan text-noir-950 text-xs font-black">ENTRAR</Link>
+          <Link to="/entrar" className="inline-block px-4 py-2 bg-neon-cyan text-noir-950 text-xs font-black">ENTRAR</Link>
         </main>
       </div>
     );
@@ -186,7 +151,6 @@ export default function Checkout() {
             <h1 className="text-lg font-black text-white">PAGAMENTO APROVADO</h1>
             <p className="text-xs text-slate-300">Pagamento realizado com sucesso! O carrinho foi esvaziado e os anúncios foram removidos do catálogo.</p>
             <p className="font-pixel text-xl text-neon-mint">{formatBRL(order.total)}</p>
-            {listingCleanupError && <p role="alert" className="text-xs text-neon-amber">{listingCleanupError}</p>}
             <Link to="/" className="inline-block px-4 py-2 bg-neon-mint text-noir-950 text-xs font-black">VOLTAR AO CATÁLOGO</Link>
           </section>
         ) : order ? (

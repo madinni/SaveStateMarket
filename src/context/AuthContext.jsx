@@ -1,73 +1,69 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { profilesApi } from "../services/api";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { authApi } from "../services/api";
+import { clearToken, getToken, setToken } from "../services/tokenStorage";
 
 export { API_URL } from "../config";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
+const ME_KEY = ["me"];
 
-const SESSION_KEY = "null_operative_session";
-
-// Remove a senha antes de manter o operador em memória e no localStorage.
-const toSession = (operative) => {
-  const { password_hash, ...safe } = operative; // eslint-disable-line no-unused-vars
-  return safe;
-};
-
+// O token fica no localStorage; os dados do usuário vêm sempre de GET /usuarios/me.
 export const AuthProvider = ({ children }) => {
-  const [isProfileSynced, setIsProfileSynced] = useState(false);
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SESSION_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+  const [token, setTokenState] = useState(getToken);
+
+  const meQuery = useQuery({
+    queryKey: ME_KEY,
+    queryFn: authApi.me,
+    enabled: Boolean(token),
+    retry: false,
+    staleTime: 30_000,
   });
 
+  const logout = useCallback(() => {
+    clearToken();
+    setTokenState(null);
+    queryClient.clear(); // nada do usuário anterior fica em cache
+  }, [queryClient]);
+
+  // Guarda o token recebido no login e carrega o perfil antes de liberar as telas.
+  const signIn = useCallback(
+    async (newToken) => {
+      setToken(newToken);
+      try {
+        const me = await queryClient.fetchQuery({ queryKey: ME_KEY, queryFn: authApi.me });
+        setTokenState(newToken);
+        return me;
+      } catch (error) {
+        clearToken();
+        throw error;
+      }
+    },
+    [queryClient],
+  );
+
+  // Atualiza o usuário em cache com o perfil devolvido pela API.
+  const login = useCallback(
+    (profile) => {
+      if (profile) queryClient.setQueryData(ME_KEY, profile);
+    },
+    [queryClient],
+  );
+
   useEffect(() => {
-    if (!user?.id) {
-      setIsProfileSynced(true);
-      return undefined;
-    }
-    let active = true;
-    setIsProfileSynced(false);
-    fetch(`${API_URL}/profiles/${encodeURIComponent(user.id)}`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      })
-      .then((operative) => {
-        if (!active) return;
-        const session = toSession(operative);
-        setUser(session);
-        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      })
-      .catch((error) =>
-        console.error("Falha ao atualizar o perfil autenticado:", error),
-      )
-      .finally(() => {
-        if (active) setIsProfileSynced(true);
-      });
+    const onUnauthorized = () => logout();
+    const onRefresh = () => queryClient.invalidateQueries({ queryKey: ME_KEY });
+    window.addEventListener("auth:unauthorized", onUnauthorized);
+    window.addEventListener("auth:refresh", onRefresh);
     return () => {
-      active = false;
+      window.removeEventListener("auth:unauthorized", onUnauthorized);
+      window.removeEventListener("auth:refresh", onRefresh);
     };
-  }, [user?.id]);
-
-  const login = (operativeData) => {
-    const session = toSession(operativeData);
-    setUser(session);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(SESSION_KEY);
-  };
+  }, [logout, queryClient]);
 
   const avatarMutation = useMutation({
-    mutationFn: (avatar_url) => profilesApi.update(user.id, { avatar_url }),
+    mutationFn: (avatar_url) => authApi.updateMe({ avatar_url }),
     onSuccess: (updated) => {
       login(updated);
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
@@ -76,13 +72,25 @@ export const AuthProvider = ({ children }) => {
 
   // Lança erro em caso de falha, para a tela exibir a mensagem.
   const updateAvatar = async (newBase64) => {
-    if (!user) return;
+    if (!token) return;
     await avatarMutation.mutateAsync(newBase64);
   };
 
+  const user = token ? meQuery.data ?? null : null;
+  const isProfileSynced = !token || !meQuery.isFetching;
+
+  // Enquanto o token é conferido na primeira carga, as telas não decidem nada.
+  if (token && meQuery.isPending) {
+    return (
+      <div className="min-h-screen bg-noir-950 flex items-center justify-center font-code text-xs text-neon-cyan animate-pulse">
+        VALIDANDO_SESSÃO...
+      </div>
+    );
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, isProfileSynced, login, logout, updateAvatar }}
+      value={{ user, token, isProfileSynced, signIn, login, logout, updateAvatar }}
     >
       {children}
     </AuthContext.Provider>

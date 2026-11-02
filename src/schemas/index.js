@@ -41,11 +41,15 @@ export const registerSchema = z.object({
   shipping_address: shippingAddressSchema,
 });
 
+// Zod 4: a mensagem de tipo inválido vai em { error } (invalid_type_error foi removido).
+const money = (message = "Informe um valor válido.") =>
+  z.coerce.number({ error: message }).positive("O valor deve ser maior que zero.");
+
 // Título e plataforma vêm do catálogo (Jogo Base) a partir do game_id.
 export const productSchema = z.object({
   game_id: z.string().min(1, "Selecione um jogo do catálogo."),
   price: z.coerce
-    .number({ invalid_type_error: "Informe um preço válido." })
+    .number({ error: "Informe um preço válido." })
     .positive("O preço deve ser maior que zero.")
     .max(100000, "O preço máximo é R$ 100.000,00."),
   has_box: z.boolean(),
@@ -82,7 +86,7 @@ export const ticketSchema = z.object({
 
 export const priceSchema = z.object({
   price: z.coerce
-    .number({ invalid_type_error: "Informe um valor válido." })
+    .number({ error: "Informe um valor válido." })
     .positive("O valor deve ser maior que zero.")
     .max(100000, "O valor máximo é R$ 100.000,00."),
 });
@@ -95,35 +99,15 @@ export const chatSchema = z.object({
   text: z.string().trim().min(1).max(500),
 });
 
-// O alvo do alerta precisa ser menor que o preço atual do anúncio.
-export const makeAlertSchema = (currentPrice) =>
-  z
-    .object({
-      target_price: z.coerce
-        .number({ invalid_type_error: "Informe um valor válido." })
-        .positive("O valor deve ser maior que zero."),
-    })
-    .refine((v) => v.target_price < Number(currentPrice), {
-      path: ["target_price"],
-      message: `O alvo deve ser menor que o preço atual (R$ ${Number(currentPrice).toFixed(2)}).`,
-    });
+// ---- Alertas de preço por título (UC11) ----
+// Ex.: "GTA VI" até R$ 200. A plataforma é opcional ("" = qualquer plataforma).
+export const alertSchema = z.object({
+  title: z.string().trim().min(2, "Informe o título do jogo.").max(120, "Máximo de 120 caracteres."),
+  platform: z.string().optional(),
+  target_price: money("Informe o preço alvo."),
+});
 
-// Formulário "novo alerta" da central de notificações: escolhe o anúncio e o alvo.
-export const makeNewAlertSchema = (products) =>
-  z
-    .object({
-      product_id: z.string().min(1, "Selecione um anúncio."),
-      target_price: z.coerce
-        .number({ invalid_type_error: "Informe um valor válido." })
-        .positive("O valor deve ser maior que zero."),
-    })
-    .superRefine((values, ctx) => {
-      const product = products.find((p) => String(p.id) === values.product_id);
-      if (product && values.target_price >= Number(product.price)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["target_price"],
-          message: `O alvo deve ser menor que o preço atual (R$ ${Number(product.price).toFixed(2)}).`,
-        });
-      }
-    });
+// Só o alvo (editar um alerta existente ou criar a partir da página do anúncio).
+export const alertTargetSchema = z.object({
+  target_price: money("Informe o preço alvo."),
+});
