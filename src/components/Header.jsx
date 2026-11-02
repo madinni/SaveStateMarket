@@ -1,4 +1,5 @@
 import React from 'react';
+import CrtToggle from "./CrtToggle";
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -57,6 +58,7 @@ export default function Header({
 
       {/* Lado Direito: Ações customizadas, Badge de Sistema ou Chip de Autenticação */}
       <div className="flex items-center space-x-2 shrink-0">
+        <CrtToggle />
         {customAction && customAction}
 
         {/* Badge de segurança / status opcional */}

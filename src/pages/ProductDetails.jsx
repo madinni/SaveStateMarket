@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import FieldError from "../components/FieldError";
 import OwnerActions from "../components/OwnerActions";
 import PriceBenchmark from "../components/PriceBenchmark";
+import PriceAlertBox from "../components/PriceAlertBox";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { useProduct } from "../hooks/useProducts";
@@ -202,6 +203,8 @@ export default function ProductDetails() {
               Conta bloqueada para compras enquanto houver reembolso pendente. Consulte seu <Link to="/profile" className="text-neon-cyan underline">perfil</Link>.
             </p>
           )}
+
+          {!isOwner && <PriceAlertBox product={product} />}
 
           <div className="pt-2">
             {isOwner ? (

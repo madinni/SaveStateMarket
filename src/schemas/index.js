@@ -94,3 +94,36 @@ export const offerSchema = priceSchema.extend({
 export const chatSchema = z.object({
   text: z.string().trim().min(1).max(500),
 });
+
+// O alvo do alerta precisa ser menor que o preço atual do anúncio.
+export const makeAlertSchema = (currentPrice) =>
+  z
+    .object({
+      target_price: z.coerce
+        .number({ invalid_type_error: "Informe um valor válido." })
+        .positive("O valor deve ser maior que zero."),
+    })
+    .refine((v) => v.target_price < Number(currentPrice), {
+      path: ["target_price"],
+      message: `O alvo deve ser menor que o preço atual (R$ ${Number(currentPrice).toFixed(2)}).`,
+    });
+
+// Formulário "novo alerta" da central de notificações: escolhe o anúncio e o alvo.
+export const makeNewAlertSchema = (products) =>
+  z
+    .object({
+      product_id: z.string().min(1, "Selecione um anúncio."),
+      target_price: z.coerce
+        .number({ invalid_type_error: "Informe um valor válido." })
+        .positive("O valor deve ser maior que zero."),
+    })
+    .superRefine((values, ctx) => {
+      const product = products.find((p) => String(p.id) === values.product_id);
+      if (product && values.target_price >= Number(product.price)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["target_price"],
+          message: `O alvo deve ser menor que o preço atual (R$ ${Number(product.price).toFixed(2)}).`,
+        });
+      }
+    });

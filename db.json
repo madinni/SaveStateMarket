@@ -5,7 +5,7 @@
       "handle": "@K3nji_Zero",
       "email": "k3nji@null-exchange.net",
       "password_hash": "supersecretpassword",
-      "reputation": 4.98,
+      "reputation": 5,
       "total_transactions": 42,
       "success_rate": 98.4,
       "vault_balance": 540,
@@ -119,12 +119,8 @@
       "seller_handle": "@K3nji_Zero",
       "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
       "buyer_handle": "@Lume",
-      "item_ids": [
-        "prod-002"
-      ],
-      "item_titles": [
-        "Super Mario World"
-      ],
+      "item_ids": ["prod-002"],
+      "item_titles": ["Super Mario World"],
       "amount": 95,
       "payment_method": "PIX",
       "status": "paid",
@@ -175,6 +171,21 @@
       "price": 40,
       "condition_tag": "[DEFECTIVE]",
       "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      "price": 240,
+      "has_box": true,
+      "has_manual": true,
+      "is_functional": true,
+      "game_id": "game-002",
+      "title": "Chrono Trigger",
+      "platform": "SNES (CART)",
+      "condition_tag": "[CIB // 9.5]",
+      "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80",
+      "seller_handle": "@Lume",
+      "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+      "created_at": "2026-10-31T18:37:00.097Z",
+      "id": "1rKQQpx"
     }
   ],
   "games": [
@@ -445,33 +456,21 @@
       "badge": "[VERIFIED_ESCROW]"
     }
   ],
-  "tickets": [
-    {
-      "id": "TCK-MVWKIYJ3",
-      "author_id": "8f31c92a-0000-0000-0000-000000000001",
-      "author_handle": "@Lume",
-      "category": "PRICE_DISCREPANCY",
-      "priority": "CRITICAL",
-      "subject": "To testando os tickets",
-      "description": "Super teste insano de ticket enviado",
-      "status": "OPEN",
-      "created_at": "2026-10-31T15:40:57.039Z"
-    }
-  ],
+  "tickets": [],
   "offers": [
     {
       "id": "OFF-101",
       "product_id": "prod-003",
       "product_title": "Chrono Trigger",
       "original_price": 350,
-      "offered_price": 0.01,
+      "offered_price": 250,
       "buyer_id": "8f31c92a-0000-0000-0000-000000000001",
       "buyer_handle": "@Lume",
       "seller_id": "7d8cd670-0000-0000-0000-000000000000",
       "seller_handle": "@K3nji_Zero",
-      "status": "REJECTED",
+      "status": "COUNTER_OFFER",
       "last_action_by": "8f31c92a-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-30T12:03:52.738Z"
+      "updated_at": "2026-10-31T18:35:52.502Z"
     },
     {
       "id": "OFF-102",
@@ -523,23 +522,15 @@
       "timestamp": "2026-10-04T11:00:00.000Z"
     },
     {
-      "id": "SYS-MVUXBWMS",
+      "id": "SYS-MVWQRWVQ",
       "offer_id": "OFF-101",
       "sender_id": "SYSTEM",
       "sender_handle": "PROTOCOL_BOT",
-      "text": "[SISTEMA]: Contraproposta enviada no valor de R$ 0.01",
-      "timestamp": "2026-10-30T12:03:50.644Z"
+      "text": "[SISTEMA]: Contraproposta enviada no valor de R$ 250.00",
+      "timestamp": "2026-10-31T18:35:52.502Z"
     },
     {
-      "id": "SYS-MVUXBY8Y",
-      "offer_id": "OFF-101",
-      "sender_id": "SYSTEM",
-      "sender_handle": "PROTOCOL_BOT",
-      "text": "[SISTEMA]: Proposta RECUSADA por @Lume",
-      "timestamp": "2026-10-30T12:03:52.738Z"
-    },
-    {
-      "id": "SYS-MVUXC0ZF",
+      "id": "SYS-MVWQS4L9",
       "offer_id": "OFF-102",
       "sender_id": "SYSTEM",
       "sender_handle": "PROTOCOL_BOT",

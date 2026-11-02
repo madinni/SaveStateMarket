@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import CrtToggle from "../components/CrtToggle";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
@@ -48,6 +49,7 @@ export default function MarketFeed() {
         </div>
 
         <div className="flex items-center space-x-2">
+          <CrtToggle />
           <Link to="/sell" className="hidden sm:inline-block px-2.5 py-1 bg-noir-900 border border-neon-pink text-neon-pink text-[10px] font-code chamfer-tag hover:bg-neon-pink hover:text-white transition-all">
             +DROP_ASSET
           </Link>

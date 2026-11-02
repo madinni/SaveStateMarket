@@ -1,11 +1,16 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
 import { useAuth } from "../context/AuthContext";
-import { useCreateTicket } from "../hooks/useTickets";
+import {
+  useCreateTicket,
+  useMyTickets,
+  useUpdateTicket,
+  useDeleteTicket,
+} from "../hooks/useTickets";
 import { ticketSchema, TICKET_CATEGORIES } from "../schemas";
 
 const PRIORITIES = [
@@ -14,12 +19,27 @@ const PRIORITIES = [
   { id: "CRITICAL", label: "CRÍTICA", color: "border-neon-pink text-neon-pink" },
 ];
 
+const STATUS_STYLE = {
+  OPEN: ["[ABERTO]", "border-neon-cyan text-neon-cyan"],
+  IN_PROGRESS: ["[EM ANÁLISE]", "border-neon-amber text-neon-amber"],
+  CLOSED: ["[FECHADO]", "border-neon-mint text-neon-mint"],
+};
+
 const DEFAULTS = { category: "MEDIA_DEFECT", priority: "HIGH", subject: "", description: "" };
+const categoryLabel = (value) => TICKET_CATEGORIES.find((c) => c.value === value)?.label || value;
 
 export default function SupportTicket() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [editingId, setEditingId] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [listError, setListError] = useState("");
+
   const createTicket = useCreateTicket();
+  const updateTicket = useUpdateTicket();
+  const deleteTicket = useDeleteTicket();
+  const { data: myTickets = [], isLoading: loadingTickets } = useMyTickets(user?.id);
 
   const {
     register,
@@ -33,8 +53,43 @@ export default function SupportTicket() {
   const priority = watch("priority");
   const subjectLen = watch("subject").trim().length;
   const descriptionLen = watch("description").trim().length;
+  const isEditing = Boolean(editingId);
+  const submitting = createTicket.isPending || updateTicket.isPending;
+  const submitError = createTicket.isError ? createTicket.error : updateTicket.isError ? updateTicket.error : null;
 
-  const onSubmit = (values) => {
+  const startEdit = (ticket) => {
+    setNotice("");
+    setEditingId(ticket.id);
+    reset({
+      category: ticket.category,
+      priority: ticket.priority,
+      subject: ticket.subject,
+      description: ticket.description,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    reset(DEFAULTS);
+  };
+
+  const onSubmit = async (values) => {
+    setNotice("");
+    if (isEditing) {
+      try {
+        await updateTicket.mutateAsync({
+          id: editingId,
+          data: { ...values, updated_at: new Date().toISOString() },
+        });
+        setEditingId(null);
+        reset(DEFAULTS);
+        setNotice("Ticket atualizado com sucesso.");
+      } catch {
+        /* o erro é exibido via updateTicket.isError */
+      }
+      return;
+    }
     createTicket.mutate({
       id: `TCK-${Date.now().toString(36).toUpperCase()}`,
       author_id: user?.id || "GUEST_SESSION",
@@ -43,6 +98,19 @@ export default function SupportTicket() {
       status: "OPEN",
       created_at: new Date().toISOString(),
     });
+  };
+
+  const onDelete = async (ticket) => {
+    if (!window.confirm(`Cancelar o ticket ${ticket.id}? Esta ação não pode ser desfeita.`)) return;
+    setListError("");
+    setNotice("");
+    try {
+      await deleteTicket.mutateAsync(ticket.id);
+      if (editingId === ticket.id) cancelEdit();
+      setNotice("Ticket cancelado.");
+    } catch (err) {
+      setListError(err.message || "Não foi possível cancelar o ticket.");
+    }
   };
 
   const createdTicket = createTicket.data;
@@ -72,14 +140,24 @@ export default function SupportTicket() {
           </span>
         </section>
 
-        {createTicket.isError && (
+        {notice && (
+          <div role="status" className="bg-noir-900 border-2 border-neon-mint p-3 chamfer-box text-xs text-neon-mint font-bold">
+            ✓ {notice}
+          </div>
+        )}
+
+        {submitError && (
           <div role="alert" className="bg-noir-900 border-2 border-neon-pink p-3.5 chamfer-box text-xs space-y-1 glow-pink">
             <p className="text-neon-pink font-bold uppercase text-sm">⚠ FALHA NO ENVIO</p>
-            <p className="text-slate-200 text-xs font-bold">{createTicket.error.message}</p>
+            <p className="text-slate-200 text-xs font-bold">{submitError.message}</p>
           </div>
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="bg-noir-900 border-2 border-slate-700 p-5 chamfer-box space-y-5 text-xs shadow-xl">
+          {isEditing && (
+            <p className="text-neon-amber font-bold">✎ EDITANDO O TICKET {editingId}</p>
+          )}
+
           <div className="space-y-1.5">
             <label htmlFor="ticket-category" className="block text-xs text-slate-200 font-bold uppercase tracking-wider">
               // [01] CATEGORIA DO INCIDENTE
@@ -132,11 +210,74 @@ export default function SupportTicket() {
             <FieldError error={errors.description} />
           </div>
 
-          <button type="submit" disabled={createTicket.isPending}
-            className="w-full py-3.5 font-black text-sm uppercase chamfer-box tracking-widest bg-neon-pink hover:bg-neon-pink/90 text-slate-950 shadow-lg glow-pink cursor-pointer transition-all active:scale-[0.99] disabled:opacity-50">
-            {createTicket.isPending ? "TRANSMITINDO_DADOS..." : "ENVIAR TICKET DE AJUDA >>"}
-          </button>
+          <div className={isEditing ? "grid grid-cols-2 gap-2" : ""}>
+            {isEditing && (
+              <button type="button" onClick={cancelEdit}
+                className="py-3.5 font-bold text-xs uppercase chamfer-box tracking-widest bg-noir-800 text-slate-200 border border-slate-600">
+                CANCELAR EDIÇÃO
+              </button>
+            )}
+            <button type="submit" disabled={submitting}
+              className="w-full py-3.5 font-black text-sm uppercase chamfer-box tracking-widest bg-neon-pink hover:bg-neon-pink/90 text-slate-950 shadow-lg glow-pink cursor-pointer transition-all active:scale-[0.99] disabled:opacity-50">
+              {submitting ? "TRANSMITINDO_DADOS..." : isEditing ? "SALVAR ALTERAÇÕES >>" : "ENVIAR TICKET DE AJUDA >>"}
+            </button>
+          </div>
         </form>
+
+        <section className="space-y-3" aria-label="Meus tickets">
+          <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider border-b border-slate-700 pb-2">
+            // MEUS TICKETS {user ? `(${myTickets.length})` : ""}
+          </h2>
+
+          {listError && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {listError}</p>}
+
+          {!user ? (
+            <p className="text-xs text-slate-400 bg-noir-900 border border-slate-800 p-3">
+              <Link to="/login" className="text-neon-cyan underline font-bold">Faça login</Link>{" "}
+              para acompanhar, editar e cancelar seus tickets.
+            </p>
+          ) : loadingTickets ? (
+            <p className="text-xs text-neon-cyan animate-pulse">CARREGANDO_TICKETS...</p>
+          ) : myTickets.length === 0 ? (
+            <p className="text-xs text-slate-500 bg-noir-900/40 border border-dashed border-noir-800 p-4 text-center">
+              VOCÊ AINDA NÃO ABRIU NENHUM TICKET.
+            </p>
+          ) : (
+            myTickets.map((t) => {
+              const [label, style] = STATUS_STYLE[t.status] || STATUS_STYLE.OPEN;
+              const editable = t.status === "OPEN";
+              return (
+                <article key={t.id} className="bg-noir-900 border border-slate-700 p-3 chamfer-box space-y-2 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-black text-white truncate">{t.subject}</p>
+                      <p className="text-[10px] text-slate-400">{t.id} // {categoryLabel(t.category)}</p>
+                    </div>
+                    <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-bold ${style}`}>{label}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 bg-noir-950 border border-slate-800 p-2 leading-relaxed whitespace-pre-wrap">{t.description}</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500">
+                    <span>
+                      SEVERIDADE: {PRIORITIES.find((p) => p.id === t.priority)?.label || t.priority} ·{" "}
+                      {new Date(t.created_at).toLocaleDateString("pt-BR")}
+                    </span>
+                    {editable ? (
+                      <span className="flex gap-2">
+                        <button type="button" onClick={() => startEdit(t)} className="px-2.5 py-1 border border-neon-cyan text-neon-cyan font-bold">EDITAR</button>
+                        <button type="button" onClick={() => onDelete(t)} disabled={deleteTicket.isPending}
+                          className="px-2.5 py-1 border border-neon-pink text-neon-pink font-bold disabled:opacity-50">
+                          CANCELAR
+                        </button>
+                      </span>
+                    ) : (
+                      <span>Apenas tickets abertos podem ser alterados.</span>
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </section>
       </main>
 
       {createTicket.isSuccess && createdTicket && (

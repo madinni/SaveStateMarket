@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { profilesApi, reviewsApi } from "../services/api";
+import { saveReviewAndSyncReputation } from "../services/domain";
 
 export const useProfiles = () =>
   useQuery({ queryKey: ["profiles"], queryFn: profilesApi.list });
@@ -11,13 +12,14 @@ export const useReviews = (profileId) =>
     enabled: Boolean(profileId),
   });
 
-// Cria a avaliação ou atualiza a existente (quando "id" é informado).
+// Cria ou atualiza a avaliação e sincroniza a reputação do avaliado.
 export const useSaveReview = (profileId) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }) =>
-      id ? reviewsApi.update(id, data) : reviewsApi.create(data),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["reviews", profileId] }),
+    mutationFn: saveReviewAndSyncReputation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reviews", profileId] });
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    },
   });
 };

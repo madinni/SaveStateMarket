@@ -8,7 +8,7 @@ export default function OwnerActions({ product }) {
   const [error, setError] = useState("");
 
   const handleDelete = async () => {
-    if (!window.confirm(`Excluir o anúncio "${product.title}"? Esta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Excluir o anúncio "${product.title}"? Os chats e alertas de preço ligados a ele também serão apagados. Esta ação não pode ser desfeita.`)) return;
     setError("");
     try {
       await deleteProduct.mutateAsync(product.id);

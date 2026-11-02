@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import CrtToggle from "../components/CrtToggle";
 import { useNavigate, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -184,7 +185,10 @@ export default function AuthLogin() {
     <div className="min-h-screen px-4 py-8 max-w-sm mx-auto flex flex-col justify-between text-slate-200">
       <header className="flex justify-between items-center text-xs font-code pb-4 border-b border-noir-800">
         <Link to="/" className="text-neon-cyan hover:text-white">&lt;&lt; RETURN_TO_FEED</Link>
-        <span className="text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag">PORT: 3001</span>
+        <div className="flex items-center space-x-2">
+          <CrtToggle />
+          <span className="text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag">PORT: 3001</span>
+        </div>
       </header>
 
       <main className="space-y-6">

@@ -1,5 +1,22 @@
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ticketsApi } from "../services/api";
 
-export const useCreateTicket = () =>
-  useMutation({ mutationFn: ticketsApi.create });
+export const useMyTickets = (authorId) =>
+  useQuery({
+    queryKey: ["tickets", authorId],
+    queryFn: () => ticketsApi.listByAuthor(authorId),
+    enabled: Boolean(authorId),
+  });
+
+const useTicketMutation = (mutationFn) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+  });
+};
+
+export const useCreateTicket = () => useTicketMutation(ticketsApi.create);
+export const useUpdateTicket = () =>
+  useTicketMutation(({ id, data }) => ticketsApi.update(id, data));
+export const useDeleteTicket = () => useTicketMutation(ticketsApi.remove);

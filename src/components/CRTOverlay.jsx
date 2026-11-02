@@ -1,6 +1,10 @@
-import React from 'react';
+import React from "react";
+import { useCrt } from "../context/CrtContext";
 
 export default function CRTOverlay() {
+  const { crtEnabled } = useCrt();
+  if (!crtEnabled) return null;
+
   return (
     <>
       <div className="fixed inset-0 scanlines z-50 pointer-events-none"></div>

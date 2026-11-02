@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import CrtToggle from "../components/CrtToggle";
 import { useSearchParams, Link, Navigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -89,6 +90,11 @@ export default function OperativeProfile() {
       setAddressFeedback("Endereço principal atualizado.");
     },
   });
+
+  // A reputação exibida é a média das avaliações recebidas.
+  const reputation = reviews.length
+    ? reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length
+    : Number(profile?.reputation ?? 5);
 
   const myReview = user
     ? reviews.find((r) => normalize(r.author_handle) === normalize(user.handle))
@@ -263,6 +269,8 @@ export default function OperativeProfile() {
             <p className="font-code text-[9px] text-slate-400">OPERATIVE_RECORD // {profile.clearance_level || "LEVEL_3"}</p>
           </div>
         </div>
+        <div className="flex items-center space-x-2">
+        <CrtToggle />
         {isOwnProfile ? (
           <button type="button" onClick={logout} className="px-2 py-1 bg-noir-900 border border-noir-700 text-slate-400 hover:text-neon-pink hover:border-neon-pink text-[10px] font-code chamfer-tag">
             [LOGOUT]
@@ -272,6 +280,7 @@ export default function OperativeProfile() {
             &lt;&lt; FEED
           </Link>
         )}
+        </div>
       </header>
 
       <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
@@ -303,7 +312,7 @@ export default function OperativeProfile() {
               </div>
               <p className="text-[10px] font-code text-slate-400 mt-0.5">ID: 0x{String(profile.id).slice(0, 8).toUpperCase()}</p>
               <p className="text-[10px] font-code text-neon-mint mt-1">
-                REPUTATION: ★ {Number(profile.reputation ?? 5).toFixed(2)} ({profile.total_transactions || 0} TRANSACTIONS)
+                REPUTATION: ★ {reputation.toFixed(2)} ({reviews.length} AVALIAÇÕES // {profile.total_transactions || 0} TRANSAÇÕES)
               </p>
             </div>
           </div>

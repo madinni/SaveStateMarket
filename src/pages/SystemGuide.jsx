@@ -1,4 +1,5 @@
 import React from 'react';
+import CrtToggle from "../components/CrtToggle";
 import { Link } from 'react-router-dom';
 
 export default function SystemGuide() {
@@ -11,9 +12,12 @@ export default function SystemGuide() {
             SYSTEM<span className="text-neon-cyan">//</span>GUIDE
           </h1>
         </div>
-        <span className="font-code text-[10px] text-neon-cyan border border-neon-cyan/30 px-2 py-0.5 chamfer-tag bg-noir-900">
-          DOCS_V1
-        </span>
+        <div className="flex items-center space-x-2">
+          <CrtToggle />
+          <span className="font-code text-[10px] text-neon-cyan border border-neon-cyan/30 px-2 py-0.5 chamfer-tag bg-noir-900">
+            DOCS_V1
+          </span>
+        </div>
       </header>
 
       <main className="max-w-md mx-auto px-4 pt-4 space-y-4">

@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { profilesApi } from "../services/api";
+
+export { API_URL } from "../config";
 
 const AuthContext = createContext();
-
-export const API_URL = "http://localhost:3001";
 
 const SESSION_KEY = "null_operative_session";
 
@@ -14,6 +16,7 @@ const toSession = (operative) => {
 
 export const AuthProvider = ({ children }) => {
   const [isProfileSynced, setIsProfileSynced] = useState(false);
+  const queryClient = useQueryClient();
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -41,7 +44,9 @@ export const AuthProvider = ({ children }) => {
         setUser(session);
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       })
-      .catch((error) => console.error("Falha ao atualizar o perfil autenticado:", error))
+      .catch((error) =>
+        console.error("Falha ao atualizar o perfil autenticado:", error),
+      )
       .finally(() => {
         if (active) setIsProfileSynced(true);
       });
@@ -61,23 +66,24 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(SESSION_KEY);
   };
 
+  const avatarMutation = useMutation({
+    mutationFn: (avatar_url) => profilesApi.update(user.id, { avatar_url }),
+    onSuccess: (updated) => {
+      login(updated);
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    },
+  });
+
+  // Lança erro em caso de falha, para a tela exibir a mensagem.
   const updateAvatar = async (newBase64) => {
     if (!user) return;
-    try {
-      const res = await fetch(`${API_URL}/profiles/${user.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatar_url: newBase64 }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      login(await res.json());
-    } catch (e) {
-      console.error("Falha ao atualizar avatar no json-server:", e);
-    }
+    await avatarMutation.mutateAsync(newBase64);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isProfileSynced, login, logout, updateAvatar }}>
+    <AuthContext.Provider
+      value={{ user, isProfileSynced, login, logout, updateAvatar }}
+    >
       {children}
     </AuthContext.Provider>
   );

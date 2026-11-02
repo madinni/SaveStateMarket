@@ -5,7 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
 import { useAuth } from "../context/AuthContext";
-import { useOffers, useMessages, useSendMessage, useUpdateOffer } from "../hooks/useOffers";
+import {
+  useOffers,
+  useMessages,
+  useSendMessage,
+  useUpdateOffer,
+  useDeleteOffer,
+} from "../hooks/useOffers";
 import { chatSchema, priceSchema } from "../schemas";
 
 const newId = (prefix) => `${prefix}-${Date.now().toString(36).toUpperCase()}`;
@@ -32,6 +38,7 @@ export default function NegotiationDesk() {
   const { data: allOffers = [], isLoading, isError } = useOffers();
   const sendMessage = useSendMessage();
   const updateOffer = useUpdateOffer();
+  const deleteOffer = useDeleteOffer();
 
   // Cada usuário só enxerga as negociações em que participa.
   const offers = user
@@ -53,6 +60,36 @@ export default function NegotiationDesk() {
   const isMyLastAction = selectedOffer?.last_action_by === user.id;
   const isBlockedBuyer = user.account_status === "refund_pending" && selectedOffer?.buyer_id === user.id;
   const canAccept = isProfileSynced && !isClosed && !isMyLastAction && !isBlockedBuyer; // impede o auto-aceite e compras bloqueadas
+
+  // A outra parte da negociação é quem recebe a notificação.
+  const otherPartyId =
+    selectedOffer && (selectedOffer.buyer_id === user.id ? selectedOffer.seller_id : selectedOffer.buyer_id);
+
+  const buildNotification = (status, newPrice) => {
+    const product = `"${selectedOffer.product_title}"`;
+    const titles = {
+      ACCEPTED: ["Proposta aceita", `${user.handle} aceitou a proposta em ${product}.`],
+      REJECTED: ["Proposta recusada", `${user.handle} recusou a proposta em ${product}.`],
+      COUNTER_OFFER: [
+        "Nova contraproposta",
+        `${user.handle} propôs R$ ${Number(newPrice).toFixed(2)} em ${product}.`,
+      ],
+    };
+    const [title, body] = titles[status];
+    return { user_id: otherPartyId, type: "OFFER", title, body, link: "/offers" };
+  };
+
+  const handleDeleteChat = async () => {
+    if (!selectedOffer) return;
+    if (!window.confirm(`Excluir o chat de "${selectedOffer.product_title}"? As mensagens serão apagadas para as duas partes.`)) return;
+    setActionError("");
+    try {
+      await deleteOffer.mutateAsync(selectedOffer.id);
+      setSelectedId(null);
+    } catch (err) {
+      setActionError(err.message || "Não foi possível excluir o chat.");
+    }
+  };
 
   const onSendMessage = async ({ text }) => {
     if (!isProfileSynced || !selectedOffer || isClosed) return;
@@ -87,6 +124,7 @@ export default function NegotiationDesk() {
     try {
       await updateOffer.mutateAsync({
         id: selectedOffer.id,
+        notification: buildNotification(status, newPrice),
         patch: {
           status,
           last_action_by: user.id,
@@ -190,7 +228,7 @@ export default function NegotiationDesk() {
                       </p>
                     </div>
 
-                    <div className="flex space-x-2">
+                    <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => changeOffer("ACCEPTED")} disabled={updateOffer.isPending || !canAccept}
                         title={isMyLastAction ? "Você não pode aceitar a própria proposta" : ""}
                         className={actionBtn(canAccept, "bg-neon-mint hover:bg-neon-mint/90 text-noir-950 shadow-md cursor-pointer font-black")}>
@@ -203,6 +241,10 @@ export default function NegotiationDesk() {
                       <button type="button" onClick={() => changeOffer("REJECTED")} disabled={updateOffer.isPending || isClosed}
                         className={actionBtn(!isClosed, "bg-noir-800 border border-neon-pink text-neon-pink hover:bg-neon-pink/10 cursor-pointer")}>
                         RECUSAR
+                      </button>
+                      <button type="button" onClick={handleDeleteChat} disabled={deleteOffer.isPending}
+                        className="font-bold text-[10px] px-3 py-1.5 chamfer-tag border border-slate-600 text-slate-300 hover:text-neon-pink hover:border-neon-pink transition-all disabled:opacity-50">
+                        {deleteOffer.isPending ? "EXCLUINDO..." : "EXCLUIR CHAT"}
                       </button>
                     </div>
                   </div>
