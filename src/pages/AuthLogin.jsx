@@ -105,7 +105,7 @@ function LoginForm({ onSuccess }) {
             <h2 className="text-[11px] font-bold text-neon-amber">ENDEREÇO DE ENTREGA OBRIGATÓRIO</h2>
             <p className="mt-1 text-[10px] text-slate-400">Complete seu endereço para entrar e realizar compras.</p>
           </div>
-          <ShippingAddressFields register={addressForm.register} errors={addressForm.formState.errors} prefix="login-shipping" />
+          <ShippingAddressFields register={addressForm.register} setValue={addressForm.setValue} watch={addressForm.watch} errors={addressForm.formState.errors} prefix="login-shipping" />
           {addressMutation.isError && <p role="alert" className="text-neon-pink font-bold">⚠ {addressMutation.error.message}</p>}
           <button type="submit" disabled={addressMutation.isPending}
             className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-cyan text-noir-950 disabled:opacity-50">
@@ -118,7 +118,7 @@ function LoginForm({ onSuccess }) {
 }
 
 function RegisterForm({ onSuccess }) {
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(registerSchema),
     defaultValues: { handle: "", email: "", password: "", shipping_address: EMPTY_SHIPPING_ADDRESS },
   });
@@ -156,7 +156,7 @@ function RegisterForm({ onSuccess }) {
       </div>
       <fieldset className="border-t border-noir-700 pt-4 space-y-3">
         <legend className="px-1 text-[10px] font-bold text-neon-cyan">ENDEREÇO PRINCIPAL DE ENTREGA *</legend>
-        <ShippingAddressFields register={register} errors={errors} />
+        <ShippingAddressFields register={register} setValue={setValue} watch={watch} errors={errors} />
       </fieldset>
 
       {mutation.isError && (

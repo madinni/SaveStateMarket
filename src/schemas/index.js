@@ -17,12 +17,13 @@ export const loginSchema = z.object({
 export const shippingAddressSchema = z.object({
   postal_code: z.string().trim().regex(/^\d{5}-?\d{3}$/, "Informe um CEP válido."),
   street: z.string().trim().min(3, "Informe a rua ou avenida."),
+  street_verified: z.boolean().refine(Boolean, "Selecione uma rua confirmada pela busca externa."),
   number: z.string().trim().min(1, "Informe o número."),
   complement: z.string().trim().max(80, "Máximo de 80 caracteres."),
   neighborhood: z.string().trim().min(2, "Informe o bairro."),
   city: z.string().trim().min(2, "Informe a cidade."),
   state: z.string().trim().regex(/^[A-Za-z]{2}$/, "Informe a UF com duas letras."),
-});
+}).transform(({ street_verified, ...address }) => address);
 
 export const shippingAddressFormSchema = z.object({
   shipping_address: shippingAddressSchema,

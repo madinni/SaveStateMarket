@@ -35,12 +35,12 @@
       "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
       "shipping_address": {
         "postal_code": "20514485",
-        "street": "Rua josé Higino",
+        "street": "Rua José Higino",
         "number": "231",
         "complement": "ap 321",
         "neighborhood": "Tijuca",
         "city": "Rio de Janeiro",
-        "state": "Rj"
+        "state": "RJ"
       },
       "account_status": "active"
     }

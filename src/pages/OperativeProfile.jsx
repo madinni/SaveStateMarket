@@ -358,7 +358,7 @@ export default function OperativeProfile() {
               {formatShippingAddress(user?.shipping_address)}
             </p>
             <form onSubmit={addressForm.handleSubmit(({ shipping_address }) => saveAddress.mutate(shipping_address))} noValidate className="space-y-3">
-              <ShippingAddressFields register={addressForm.register} errors={addressForm.formState.errors} />
+              <ShippingAddressFields register={addressForm.register} setValue={addressForm.setValue} watch={addressForm.watch} errors={addressForm.formState.errors} />
               {saveAddress.isError && <p role="alert" className="text-[10px] font-bold text-neon-pink">⚠ {saveAddress.error.message}</p>}
               {addressFeedback && <p role="status" className="text-[10px] font-bold text-neon-mint">{addressFeedback}</p>}
               <button type="submit" disabled={saveAddress.isPending} className="w-full py-2 bg-neon-cyan text-noir-950 text-xs font-bold disabled:opacity-50">

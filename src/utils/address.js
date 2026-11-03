@@ -1,6 +1,7 @@
 export const EMPTY_SHIPPING_ADDRESS = {
   postal_code: "",
   street: "",
+  street_verified: false,
   number: "",
   complement: "",
   neighborhood: "",

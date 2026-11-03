@@ -18,7 +18,7 @@ const inputClass =
 export default function Cadastrar() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { register, handleSubmit, setError, formState: { errors } } = useForm({
+  const { register, handleSubmit, setError, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(registerSchema),
     defaultValues: { handle: "", email: "", password: "", shipping_address: { ...EMPTY_SHIPPING_ADDRESS } },
   });
@@ -54,7 +54,7 @@ export default function Cadastrar() {
         </div>
         <fieldset className="border-t border-noir-700 pt-4 space-y-3">
           <legend className="px-1 text-[10px] font-bold text-neon-cyan">ENDEREÇO PRINCIPAL DE ENTREGA *</legend>
-          <ShippingAddressFields register={register} errors={errors} />
+          <ShippingAddressFields register={register} setValue={setValue} watch={watch} errors={errors} />
         </fieldset>
 
         {mutation.isError && !(mutation.error.status === 409 && mutation.error.field) && (

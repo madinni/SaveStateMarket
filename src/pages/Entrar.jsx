@@ -94,7 +94,7 @@ export default function Entrar() {
             <h2 className="text-[11px] font-bold text-neon-amber">ENDEREÇO DE ENTREGA OBRIGATÓRIO</h2>
             <p className="mt-1 text-[10px] text-slate-400">Complete seu endereço para entrar e realizar compras.</p>
           </div>
-          <ShippingAddressFields register={addressForm.register} errors={addressForm.formState.errors} prefix="login-shipping" />
+          <ShippingAddressFields register={addressForm.register} setValue={addressForm.setValue} watch={addressForm.watch} errors={addressForm.formState.errors} prefix="login-shipping" />
           {addressMutation.isError && <p role="alert" className="text-neon-pink font-bold">⚠ {addressMutation.error.message}</p>}
           <button type="submit" disabled={addressMutation.isPending}
             className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-cyan text-noir-950 disabled:opacity-50">
