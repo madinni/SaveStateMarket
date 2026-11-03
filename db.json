@@ -110,6 +110,47 @@
       },
       "created_at": "2026-11-01T01:41:23.594Z",
       "approved_at": "2026-11-01T01:41:26.781Z"
+    },
+    {
+      "id": "ORD-MVX6RJ7T-d8dace69",
+      "items": [
+        {
+          "product_id": "prod-005",
+          "title": "The Legend of Zelda: Ocarina of Time",
+          "platform": "N64 (CART)",
+          "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80",
+          "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+          "seller_handle": "@Lume",
+          "quantity": 1,
+          "unit_price": 280,
+          "subtotal": 280
+        }
+      ],
+      "total": 280,
+      "payment_method": "PIX",
+      "status": "approved",
+      "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid5204000053039865406280.005802BR5916SAVESTATE MARKET6009SAO PAULO62230519ORDMVX6RJ7TD8DACE69630450D4",
+      "buyer_id": "7d8cd670-0000-0000-0000-000000000000",
+      "buyer_handle": "@K3nji_Zero",
+      "shipping_address": {
+        "postal_code": "28547792",
+        "street": "Rua dos alfeneiros",
+        "number": "42",
+        "complement": "perto do harry potter",
+        "neighborhood": "Hogwarts da silva",
+        "city": "Londres",
+        "state": "LN"
+      },
+      "created_at": "2026-11-01T02:03:28.649Z",
+      "approved_at": "2026-11-01T02:03:29.442Z",
+      "delivery_cancellations": [
+        {
+          "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+          "refund_id": "RFD-MVX6S1ZV-4JVOVY",
+          "status": "cancelled",
+          "cancelled_at": "2026-11-01T02:03:53.040Z"
+        }
+      ]
     }
   ],
   "refunds": [
@@ -132,6 +173,26 @@
       "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid520400005303986540595.005802BR5916SAVESTATE MARKET6009SAO PAULO62210517RFDMVX6BGMF0TVGEN6304E47E",
       "created_at": "2026-11-01T01:50:58.841Z",
       "paid_at": "2026-11-01T01:51:18.996Z"
+    },
+    {
+      "id": "RFD-MVX6S1ZV-4JVOVY",
+      "order_id": "ORD-MVX6RJ7T-d8dace69",
+      "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+      "seller_handle": "@Lume",
+      "buyer_id": "7d8cd670-0000-0000-0000-000000000000",
+      "buyer_handle": "@K3nji_Zero",
+      "item_ids": [
+        "prod-005"
+      ],
+      "item_titles": [
+        "The Legend of Zelda: Ocarina of Time"
+      ],
+      "amount": 280,
+      "payment_method": "PIX",
+      "status": "paid",
+      "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid5204000053039865406280.005802BR5916SAVESTATE MARKET6009SAO PAULO62210517RFDMVX6S1ZV4JVOVY63046A0D",
+      "created_at": "2026-11-01T02:03:53.020Z",
+      "paid_at": "2026-11-01T02:04:08.254Z"
     }
   ],
   "products": [
@@ -147,20 +208,6 @@
       "is_functional": true,
       "price": 119.99,
       "condition_tag": "[CIB // 9.5]",
-      "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      "id": "prod-005",
-      "created_at": "2026-09-10T16:30:00.000Z",
-      "seller_handle": "@Lume",
-      "seller_id": "8f31c92a-0000-0000-0000-000000000001",
-      "title": "The Legend of Zelda: Ocarina of Time",
-      "platform": "N64 (CART)",
-      "has_box": false,
-      "has_manual": false,
-      "is_functional": true,
-      "price": 280,
-      "condition_tag": "[USED]",
       "image_url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80"
     },
     {
