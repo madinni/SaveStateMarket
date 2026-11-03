@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
 import AuthShell from "../components/AuthShell";
 import FieldError from "../components/FieldError";
+import LoginError from "../components/LoginError";
 import ShippingAddressFields from "../components/ShippingAddressFields";
 import { useAuth } from "../context/AuthContext";
-import { authApi } from "../services/api";
+import { useLogin, useUpdateMe } from "../hooks/useAuthActions";
 import { loginSchema, shippingAddressFormSchema } from "../schemas";
 import { EMPTY_SHIPPING_ADDRESS, hasShippingAddress } from "../utils/address";
 
@@ -16,7 +16,7 @@ const inputClass =
 
 // Aula 11: /entrar é pública; POST /login → 200 guarda o token; 401 fica aqui.
 export default function Entrar() {
-  const { user, signIn, login } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [needsAddress, setNeedsAddress] = useState(false);
@@ -32,29 +32,28 @@ export default function Entrar() {
     defaultValues: { shipping_address: { ...EMPTY_SHIPPING_ADDRESS } },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (values) => {
-      const { token } = await authApi.login(values);
-      return signIn(token);
-    },
-    onSuccess: (profile) => {
-      // Contas antigas sem endereço completam o cadastro antes de seguir.
-      if (hasShippingAddress(profile.shipping_address)) navigate(destino, { replace: true });
-      else setNeedsAddress(true);
-    },
-  });
+  const loginMutation = useLogin();
+  const addressMutation = useUpdateMe();
 
-  const addressMutation = useMutation({
-    mutationFn: (shipping_address) => authApi.updateMe({ shipping_address }),
-    onSuccess: (profile) => {
-      login(profile);
-      navigate(destino, { replace: true });
-    },
-  });
+  const onLogin = (values) =>
+    loginMutation.mutate(values, {
+      onSuccess: (profile) => {
+        // O administrador vai direto para o painel (não compra, então não precisa de endereço).
+        if (profile.role === "admin") navigate("/admin", { replace: true });
+        // Contas antigas sem endereço completam o cadastro antes de seguir.
+        else if (hasShippingAddress(profile.shipping_address)) navigate(destino, { replace: true });
+        else setNeedsAddress(true);
+      },
+    });
+
+  const onSaveAddress = ({ shipping_address }) =>
+    addressMutation.mutate({ shipping_address }, { onSuccess: () => navigate(destino, { replace: true }) });
 
   // Quem já está logado não precisa ver a tela (exceto durante o próprio login).
   const loggingIn = loginMutation.isPending || loginMutation.isSuccess;
-  if (user && !needsAddress && !loggingIn) return <Navigate to={destino} replace />;
+  if (user && !needsAddress && !loggingIn) {
+    return <Navigate to={user.role === "admin" ? "/admin" : destino} replace />;
+  }
 
   return (
     <AuthShell>
@@ -65,11 +64,11 @@ export default function Entrar() {
       )}
 
       {!needsAddress ? (
-        <form onSubmit={handleSubmit((values) => loginMutation.mutate(values))} noValidate
+        <form onSubmit={handleSubmit(onLogin)} noValidate
           className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box glow-pink space-y-4 font-code text-xs">
           <div>
             <label htmlFor="login-email" className="block text-[10px] text-slate-400 mb-1">// NETWORK_IDENTIFIER (EMAIL)</label>
-            <input id="login-email" type="email" autoComplete="email" {...register("email")} className={inputClass} />
+            <input id="login-email" type="text" inputMode="email" autoCapitalize="none" autoComplete="username" {...register("email")} className={inputClass} />
             <FieldError error={errors.email} />
           </div>
           <div>
@@ -78,9 +77,7 @@ export default function Entrar() {
             <FieldError error={errors.password} />
           </div>
 
-          {loginMutation.isError && (
-            <p role="alert" className="text-neon-pink font-bold">⚠ {loginMutation.error.message}</p>
-          )}
+          {loginMutation.isError && <LoginError error={loginMutation.error} />}
 
           <button type="submit" disabled={loginMutation.isPending}
             className="w-full py-3 font-bold uppercase chamfer-box tracking-widest bg-neon-pink text-white glow-pink disabled:opacity-50">
@@ -88,7 +85,7 @@ export default function Entrar() {
           </button>
         </form>
       ) : (
-        <form onSubmit={addressForm.handleSubmit(({ shipping_address }) => addressMutation.mutate(shipping_address))} noValidate
+        <form onSubmit={addressForm.handleSubmit(onSaveAddress)} noValidate
           className="bg-noir-900/90 border border-noir-700 p-5 chamfer-box space-y-3 font-code text-xs">
           <div>
             <h2 className="text-[11px] font-bold text-neon-amber">ENDEREÇO DE ENTREGA OBRIGATÓRIO</h2>

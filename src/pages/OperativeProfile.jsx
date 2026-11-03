@@ -53,6 +53,7 @@ export default function OperativeProfile() {
   const [searchParams] = useSearchParams();
   const { user, login, logout, updateAvatar } = useAuth();
   const [feedback, setFeedback] = useState("");
+  const [reviewError, setReviewError] = useState(null);
   const [addressFeedback, setAddressFeedback] = useState("");
   const [avatarError, setAvatarError] = useState("");
   const [refundError, setRefundError] = useState("");
@@ -104,6 +105,7 @@ export default function OperativeProfile() {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(reviewSchema),
@@ -114,6 +116,9 @@ export default function OperativeProfile() {
   useEffect(() => {
     reset({ comment: myReview?.comment ?? "", rating: myReview?.rating ?? 5 });
   }, [myReview?.id, myReview?.comment, myReview?.rating, reset]);
+
+  // O aviso de avaliação (ex.: 403) é do perfil visitado; some ao trocar de perfil.
+  useEffect(() => setReviewError(null), [profile?.id]);
 
   useEffect(() => {
     if (!isOwnProfile) return;
@@ -160,6 +165,7 @@ export default function OperativeProfile() {
 
   const onSubmitReview = async (values) => {
     setFeedback("");
+    setReviewError(null);
     try {
       await saveReview.mutateAsync({
         id: myReview?.id,
@@ -173,8 +179,10 @@ export default function OperativeProfile() {
         },
       });
       setFeedback("Feedback registrado com sucesso.");
-    } catch {
-      /* o erro é exibido via saveReview.isError */
+    } catch (err) {
+      // Erro de campo vai para o campo; o resto (ex.: 403 sem transação concluída) vira aviso no formulário.
+      if (err.field === "comment" || err.field === "rating") setError(err.field, { message: err.message });
+      else setReviewError(err);
     }
   };
 
@@ -375,7 +383,7 @@ export default function OperativeProfile() {
             </div>
             {user.account_status === "refund_pending" && (
               <p role="alert" className="border border-neon-amber/60 bg-noir-900 p-3 text-[10px] text-neon-amber">
-                CONTA BLOQUEADA PARA COMPRAS E NOVOS ANÚNCIOS ATÉ A QUITAÇÃO DOS REEMBOLSOS PIX.
+                CONTA BLOQUEADA PARA COMPRAS E NOVOS ANÚNCIOS. PAGUE OS REEMBOLSOS PIX PENDENTES E AGUARDE A LIBERAÇÃO DO ADMINISTRADOR: A CONFIRMAÇÃO DO PAGAMENTO, SOZINHA, NÃO DESBLOQUEIA A CONTA.
               </p>
             )}
             {refundError && <p role="alert" className="text-[10px] font-bold text-neon-pink">⚠ {refundError}</p>}
@@ -414,8 +422,12 @@ export default function OperativeProfile() {
                     <div className="border-t border-slate-700 pt-3 space-y-2">
                       <div className="flex justify-between gap-2 text-[10px]">
                         <span className="font-bold text-neon-amber">DEVOLUÇÃO PIX</span>
-                        <span className={refund.status === "paid" ? "text-neon-mint" : "text-neon-amber"}>
-                          {refund.status === "paid" ? "REEMBOLSO PAGO" : "REEMBOLSO PENDENTE"}
+                        <span className={`text-right ${refund.status === "released" ? "text-neon-mint" : refund.status === "paid" ? "text-neon-cyan" : "text-neon-amber"}`}>
+                          {refund.status === "released"
+                            ? "LIBERADO"
+                            : refund.status === "paid"
+                              ? "PAGO — AGUARDANDO LIBERAÇÃO DO ADMIN"
+                              : "REEMBOLSO PENDENTE"}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-300">Devolva {formatBRL(refund.amount)} ao comprador via PIX.</p>
@@ -509,7 +521,14 @@ export default function OperativeProfile() {
                     {saveReview.isPending ? "GRAVANDO..." : myReview ? "[ATUALIZAR_LOG]" : "[GRAVAR_LOG]"}
                   </button>
                 </div>
-                {saveReview.isError && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {saveReview.error.message}</p>}
+                {reviewError && (reviewError.status === 403 ? (
+                  <div role="alert" className="border border-neon-amber/60 bg-noir-950 p-2.5 space-y-1 font-code">
+                    <p className="text-[11px] font-bold text-neon-amber">⚠ AVALIAÇÃO NÃO PERMITIDA</p>
+                    <p className="text-[10px] text-slate-300">{reviewError.message}</p>
+                  </div>
+                ) : (
+                  <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {reviewError.message}</p>
+                ))}
                 {feedback && <p role="status" className="text-[11px] font-bold text-neon-mint">✓ {feedback}</p>}
               </form>
             </section>

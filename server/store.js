@@ -19,6 +19,7 @@ const COLLECTIONS = [
   "price_alerts",
   "orders",
   "refunds",
+  "reports",
 ];
 
 let data = null;
@@ -31,8 +32,12 @@ function load() {
   return data;
 }
 
+// Gravação atômica: escreve num arquivo temporário e troca pelo definitivo com rename,
+// assim uma queda no meio da escrita não deixa o db.json pela metade.
 export function save() {
-  fs.writeFileSync(DB_PATH, JSON.stringify(load(), null, 2) + "\n");
+  const tmp = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(load(), null, 2) + "\n");
+  fs.renameSync(tmp, DB_PATH);
 }
 
 const table = (name) => {

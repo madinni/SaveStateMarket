@@ -43,6 +43,21 @@
         "state": "RJ"
       },
       "account_status": "active"
+    },
+    {
+      "id": "0cbb05dd-1c51-4daf-8aa2-14404d6ab28e",
+      "handle": "@admin",
+      "email": "admin",
+      "password_hash": "$2b$10$tHHJFsN8YQmSBjHp/s2qj.OJHIXd7VPVUs2Fa1u/a4E7MwZNYeluW",
+      "shipping_address": null,
+      "role": "admin",
+      "account_status": "active",
+      "reputation": 5,
+      "total_transactions": 0,
+      "success_rate": 100,
+      "vault_balance": 0,
+      "clearance_level": "LEVEL_3",
+      "created_at": "2026-11-03T14:56:39.915Z"
     }
   ],
   "orders": [
@@ -169,10 +184,12 @@
       ],
       "amount": 95,
       "payment_method": "PIX",
-      "status": "paid",
+      "status": "released",
       "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid520400005303986540595.005802BR5916SAVESTATE MARKET6009SAO PAULO62210517RFDMVX6BGMF0TVGEN6304E47E",
       "created_at": "2026-11-01T01:50:58.841Z",
-      "paid_at": "2026-11-01T01:51:18.996Z"
+      "paid_at": "2026-11-01T01:51:18.996Z",
+      "released_at": "2026-11-01T01:51:18.996Z",
+      "released_by": "MIGRACAO"
     },
     {
       "id": "RFD-MVX6S1ZV-4JVOVY",
@@ -189,10 +206,12 @@
       ],
       "amount": 280,
       "payment_method": "PIX",
-      "status": "paid",
+      "status": "released",
       "pix_copy_paste": "00020101021226540014br.gov.bcb.pix0132checkout@savestatemarket.invalid5204000053039865406280.005802BR5916SAVESTATE MARKET6009SAO PAULO62210517RFDMVX6S1ZV4JVOVY63046A0D",
       "created_at": "2026-11-01T02:03:53.020Z",
-      "paid_at": "2026-11-01T02:04:08.254Z"
+      "paid_at": "2026-11-01T02:04:08.254Z",
+      "released_at": "2026-11-01T02:04:08.254Z",
+      "released_by": "MIGRACAO"
     }
   ],
   "products": [
@@ -599,5 +618,32 @@
     }
   ],
   "notifications": [],
-  "price_alerts": []
+  "price_alerts": [
+    {
+      "id": "ALR-51b989880dbc",
+      "user_id": "7d8cd670-0000-0000-0000-000000000000",
+      "title": "Donkey Kong Country",
+      "platform": "SNES (CART)",
+      "target_price": 150,
+      "active": true,
+      "created_at": "2026-11-03T12:16:51.750Z"
+    }
+  ],
+  "reports": [
+    {
+      "id": "RPT-681C72B745F4",
+      "product_id": "1rKQQpx",
+      "product_title": "Chrono Trigger",
+      "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+      "seller_handle": "@Lume",
+      "reason": "FALSIFICADO",
+      "details": "FAKE",
+      "reporter_id": "7d8cd670-0000-0000-0000-000000000000",
+      "reporter_handle": "@K3nji_Zero",
+      "status": "DISMISSED",
+      "created_at": "2026-11-03T14:57:59.334Z",
+      "resolved_at": "2026-11-03T14:58:15.533Z",
+      "resolved_by": "0cbb05dd-1c51-4daf-8aa2-14404d6ab28e"
+    }
+  ]
 }

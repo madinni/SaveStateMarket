@@ -8,7 +8,7 @@
     "build": "vite build",
     "server": "node --watch server/index.js",
     "full-dev": "concurrently \"npm run server\" \"npm run dev\"",
-    "test": "node --test server/tests/"
+    "test": "node --test \"server/tests/*.test.mjs\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",

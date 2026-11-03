@@ -150,3 +150,20 @@ export const priceRefsApi = {
   create: (data) => request("/price_references", json("POST", data)),
   update: (id, data) => request(`/price_references/${id}`, json("PATCH", data)),
 };
+
+// Denúncias de anúncio (UC15). Só criação: a lista é exclusiva do administrador.
+export const reportsApi = {
+  create: (data) => request("/reports", json("POST", data)),
+};
+
+// Rotas exclusivas do administrador. O servidor responde 403 para quem não tem role "admin".
+export const adminApi = {
+  listTickets: () => request(`/admin/tickets?${NEWEST_FIRST}`),
+  updateTicket: (id, data) => request(`/admin/tickets/${id}`, json("PATCH", data)),
+  listRefunds: () => request("/admin/refunds"),
+  releaseRefund: (id) => request(`/admin/refunds/${id}/liberar`, { method: "PATCH" }),
+  // A ordem (abertas primeiro) já vem do servidor.
+  listReports: () => request("/admin/reports"),
+  updateReport: (id, data) => request(`/admin/reports/${id}`, json("PATCH", data)),
+  deleteProduct: (id) => request(`/admin/products/${id}`, { method: "DELETE" }),
+};

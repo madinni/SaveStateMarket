@@ -9,8 +9,13 @@ export const PLATFORMS = [
   { value: "SWITCH (CART)", label: "Nintendo Switch" },
 ];
 
+// Aceita um e-mail válido ou o literal "admin" (conta inicial do administrador).
 export const loginSchema = z.object({
-  email: z.string().trim().min(1, "Informe o e-mail.").email("E-mail inválido."),
+  email: z
+    .string()
+    .trim()
+    .min(1, "Informe o e-mail.")
+    .refine((value) => value === "admin" || z.email().safeParse(value).success, "E-mail inválido."),
   password: z.string().min(1, "Informe a senha."),
 });
 
@@ -85,6 +90,16 @@ export const ticketSchema = z.object({
     .min(15, "O relatório detalhado deve ter pelo menos 15 caracteres."),
 });
 
+// Visitante (sem login) precisa deixar um e-mail para receber a resposta do ticket.
+export const guestTicketSchema = ticketSchema.extend({
+  contact_email: z
+    .string()
+    .trim()
+    .min(1, "Informe um e-mail para contato.")
+    .email("Informe um e-mail de contato válido.")
+    .max(120, "Máximo de 120 caracteres."),
+});
+
 export const priceSchema = z.object({
   price: z.coerce
     .number({ error: "Informe um valor válido." })
@@ -111,4 +126,30 @@ export const alertSchema = z.object({
 // Só o alvo (editar um alerta existente ou criar a partir da página do anúncio).
 export const alertTargetSchema = z.object({
   target_price: money("Informe o preço alvo."),
+});
+
+// ---- Denúncia de anúncio (UC15) ----
+export const REPORT_REASONS = [
+  { value: "FALSIFICADO", label: "Mídia falsificada / réplica" },
+  { value: "GOLPE", label: "Suspeita de golpe" },
+  { value: "DESCRICAO_ENGANOSA", label: "Descrição enganosa" },
+  { value: "CONTEUDO_IMPROPRIO", label: "Conteúdo impróprio" },
+  { value: "OUTRO", label: "Outro motivo" },
+];
+
+export const reportSchema = z.object({
+  reason: z.enum(REPORT_REASONS.map((r) => r.value), { error: "Selecione um motivo." }),
+  details: z.string().trim().max(500, "Máximo de 500 caracteres."),
+});
+
+// ---- Painel do administrador (tickets) ----
+export const TICKET_STATUSES = [
+  { value: "OPEN", label: "ABERTO" },
+  { value: "IN_PROGRESS", label: "EM ANÁLISE" },
+  { value: "CLOSED", label: "FECHADO" },
+];
+
+export const adminTicketSchema = z.object({
+  status: z.enum(TICKET_STATUSES.map((s) => s.value)),
+  admin_reply: z.string().trim().max(3000, "Máximo de 3000 caracteres."),
 });

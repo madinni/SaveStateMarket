@@ -61,6 +61,16 @@ export default function Header({
         <CrtToggle />
         {customAction && customAction}
 
+        {/* Atalho do administrador (no celular, o acesso fica na Navbar) */}
+        {user?.role === "admin" && (
+          <Link
+            to="/admin"
+            className="hidden sm:inline-block px-2.5 py-1 bg-noir-900 border border-neon-amber text-neon-amber text-[10px] font-code font-bold chamfer-tag hover:bg-neon-amber hover:text-noir-950 transition-all"
+          >
+            [ADMIN]
+          </Link>
+        )}
+
         {/* Badge de segurança / status opcional */}
         {badgeText && (
           <span className={`font-code text-[10px] border px-2 py-0.5 chamfer-tag ${badgeStyles[badgeType] || badgeStyles.mint}`}>

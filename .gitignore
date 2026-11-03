@@ -1,3 +1,9 @@
 node_modules
 package-lock.json
 .env
+CLAUDE.md
+.claude
+dist
+relatorios-teste
+db.json.tmp
+relatorios-mudancas

@@ -1,8 +1,16 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
 import { migrate } from "./migrate.js";
+import { problemaDoSegredo } from "./auth.js";
 
 const PORT = Number(process.env.PORT || 3001);
+
+// Não sobe com SEGREDO ausente, de exemplo ou fraco (tokens JWT seriam forjáveis).
+const problema = problemaDoSegredo();
+if (problema) {
+  console.error(`Não foi possível subir a API: ${problema}`);
+  process.exit(1);
+}
 
 await migrate();
 

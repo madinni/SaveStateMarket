@@ -12,23 +12,24 @@ import * as S from "./schemas.js";
 const router = Router();
 
 // exigeDono da aula: sem item → 404; item de outra pessoa → 403.
-function exigeItem(collection, id, label = "Registro") {
+export function exigeItem(collection, id, label = "Registro") {
   const item = store.get(collection, id);
   if (!item) fail(404, `${label} não encontrado.`);
   return item;
 }
-const exigeDono = (allowed, message = "Este registro pertence a outra pessoa.") => {
+export const exigeDono = (allowed, message = "Este registro pertence a outra pessoa.") => {
   if (!allowed) fail(403, message);
 };
 
-const brl = (value) => `R$ ${Number(value || 0).toFixed(2)}`;
+export const brl = (value) => `R$ ${Number(value || 0).toFixed(2)}`;
 const handleOf = (user) => user.handle;
 
 // ---------------------------------------------------------------- Anúncios (Matheus + Luciano)
 const isSeller = (product, user) =>
   sameId(product.seller_id, user.id) || (!product.seller_id && product.seller_handle === user.handle);
 
-function removeProductCascade(productId) {
+// Exportada: o admin também remove anúncios (DELETE /admin/products/:id).
+export function removeProductCascade(productId) {
   const offerIds = store.find("offers", (o) => sameId(o.product_id, productId)).map((o) => String(o.id));
   store.removeWhere("messages", (m) => offerIds.includes(String(m.offer_id)));
   store.removeWhere("offers", (o) => offerIds.includes(String(o.id)));
@@ -109,12 +110,26 @@ function syncReputation(profileId) {
   store.update("profiles", profileId, { reputation: Number(average.toFixed(2)) });
 }
 
+// Houve pelo menos um pedido aprovado entre as duas pessoas (qualquer um comprou do outro)?
+// O pedido guarda o comprador em buyer_id e os vendedores em items[].seller_id.
+function hasApprovedTrade(userId, otherId) {
+  const soldBy = (order, id) => (order.items || []).some((item) => sameId(item.seller_id, id));
+  return store.find(
+    "orders",
+    (o) =>
+      o.status === "approved" &&
+      ((sameId(o.buyer_id, userId) && soldBy(o, otherId)) || (sameId(o.buyer_id, otherId) && soldBy(o, userId))),
+  ).length > 0;
+}
+const NO_TRADE = "Você só pode avaliar usuários com quem concluiu uma transação.";
+
 router.get("/profile_reviews", (req, res) => res.json(applyQuery(store.list("profile_reviews"), req.query)));
 
 router.post("/profile_reviews", exigeJwt, (req, res) => {
   const body = parse(S.reviewSchema, req.body);
   exigeItem("profiles", body.profile_id, "Operador");
   if (sameId(body.profile_id, req.user.id)) fail(403, "Você não pode avaliar a si mesmo.");
+  if (!hasApprovedTrade(req.user.id, body.profile_id)) fail(403, NO_TRADE);
   const already = store.find(
     "profile_reviews",
     (r) => sameId(r.profile_id, body.profile_id) && reviewAuthor(r, req.user),
@@ -142,6 +157,9 @@ router.post("/profile_reviews", exigeJwt, (req, res) => {
 router.patch("/profile_reviews/:id", exigeJwt, (req, res) => {
   const review = exigeItem("profile_reviews", req.params.id, "Avaliação");
   exigeDono(reviewAuthor(review, req.user), "Só o autor pode alterar a avaliação.");
+  // O avaliado não muda (o schema não aceita profile_id) e avaliações antigas, feitas
+  // antes desta regra, só podem ser editadas se houver transação concluída.
+  if (!hasApprovedTrade(req.user.id, review.profile_id)) fail(403, NO_TRADE);
   const body = parse(S.reviewUpdateSchema, req.body);
   const updated = store.update("profile_reviews", review.id, {
     ...body,
@@ -253,6 +271,8 @@ router.patch("/offers/:id", exigeJwt, (req, res) => {
 router.delete("/offers/:id", exigeJwt, (req, res) => {
   const offer = exigeItem("offers", req.params.id, "Negociação");
   exigeDono(isParty(offer, req.user));
+  // Negociação aceita é histórico da transação: não pode sumir.
+  if (offer.status === "ACCEPTED") fail(409, "Negociações aceitas não podem ser excluídas.");
   store.removeWhere("messages", (m) => sameId(m.offer_id, offer.id));
   store.remove("offers", offer.id);
   res.json({});
@@ -305,6 +325,10 @@ router.get("/tickets/:id", exigeJwt, (req, res) => {
 // Visitantes também podem abrir ticket (como antes); logado, o dono vem do token.
 router.post("/tickets", jwtOpcional, (req, res) => {
   const body = parse(S.ticketSchema, req.body);
+  // Visitante precisa deixar um e-mail para receber a resposta; logado, o contato é a conta.
+  if (!req.user && !body.contact_email) {
+    fail(400, "Informe um e-mail de contato para receber a resposta.", "contact_email");
+  }
   const created = store.insert("tickets", {
     ...body,
     id: store.newId("TCK-").toUpperCase(),
@@ -555,16 +579,51 @@ router.patch("/refunds/:id", exigeJwt, (req, res) => {
   parse(S.refundUpdateSchema, req.body);
   if (refund.status !== "pending") fail(409, "Este reembolso já foi pago.");
 
+  // Fluxo pending → paid → released: confirmar o pagamento NÃO desbloqueia a conta;
+  // só o administrador libera (PATCH /admin/refunds/:id/liberar).
   const updated = store.update("refunds", refund.id, { status: "paid", paid_at: now() });
-  const pending = store.find("refunds", (r) => sameId(r.seller_id, req.user.id) && r.status === "pending");
-  if (!pending.length) store.update("profiles", req.user.id, { account_status: "active" });
   notify(refund.buyer_id, {
     type: "REFUND",
     title: "Reembolso pago",
     body: `Você recebeu o reembolso de ${brl(refund.amount)} referente a ${refund.item_titles.join(", ")}.`,
     link: "/profile",
   });
+  notify(refund.seller_id, {
+    type: "REFUND",
+    title: "Pagamento do reembolso registrado",
+    body: `Pagamento de ${brl(refund.amount)} confirmado. Sua conta aguarda a liberação do administrador.`,
+    link: "/profile",
+  });
   res.json(updated);
+});
+
+// ---------------------------------------------------------------- Denúncias de anúncio
+// Só usuário logado denuncia; não há GET público (a lista fica em /admin/reports).
+router.post("/reports", exigeJwt, (req, res) => {
+  const body = parse(S.reportCreateSchema, req.body);
+  const product = exigeItem("products", body.product_id, "Anúncio");
+  if (isSeller(product, req.user)) fail(403, "Você não pode denunciar o próprio anúncio.");
+  const duplicada = store.find(
+    "reports",
+    (r) => sameId(r.product_id, product.id) && sameId(r.reporter_id, req.user.id) && r.status === "OPEN",
+  );
+  if (duplicada.length) fail(409, "Você já denunciou este anúncio.");
+
+  const created = store.insert("reports", {
+    id: store.newId("RPT-").toUpperCase(),
+    product_id: product.id,
+    // Retrato do anúncio: ele pode ser apagado depois.
+    product_title: product.title,
+    seller_id: product.seller_id ?? null,
+    seller_handle: product.seller_handle ?? null,
+    reason: body.reason,
+    details: body.details ?? "",
+    reporter_id: req.user.id,
+    reporter_handle: handleOf(req.user),
+    status: "OPEN",
+    created_at: now(),
+  });
+  res.status(201).json(created);
 });
 
 export default router;

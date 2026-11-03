@@ -20,13 +20,15 @@ import {
 import { alertSchema, alertTargetSchema, PLATFORMS } from "../schemas";
 import { listingsForAlert, normalizeAlertTitle } from "../utils/alerts";
 
-const TYPE_ICON = { OFFER: "◈", PRICE_ALERT: "▼", REVIEW: "★", ORDER: "▣", REFUND: "↺" };
+const TYPE_ICON = { OFFER: "◈", PRICE_ALERT: "▼", REVIEW: "★", ORDER: "▣", REFUND: "↺", MODERATION: "⚑", TICKET: "?" };
 const TYPE_COLOR = {
   OFFER: "text-neon-cyan",
   PRICE_ALERT: "text-neon-amber",
   REVIEW: "text-neon-mint",
   ORDER: "text-neon-mint",
   REFUND: "text-neon-pink",
+  MODERATION: "text-neon-pink",
+  TICKET: "text-neon-cyan",
 };
 
 const brl = (v) => `R$ ${Number(v).toFixed(2)}`;

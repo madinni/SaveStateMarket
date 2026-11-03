@@ -52,7 +52,7 @@ export const useUpdateOffer = () => {
   });
 };
 
-// Exclui o chat (negociação + mensagens).
+// Exclui o chat (negociação + mensagens). Oferta ACCEPTED é recusada pela API (409).
 export const useDeleteOffer = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -60,6 +60,10 @@ export const useDeleteOffer = () => {
     onSuccess: (_data, offerId) => {
       queryClient.removeQueries({ queryKey: ["messages", offerId] });
       queryClient.invalidateQueries({ queryKey: ["offers"] });
+    },
+    // 409: a oferta foi aceita enquanto a lista estava desatualizada; recarrega o status.
+    onError: (error) => {
+      if (error?.status === 409) queryClient.invalidateQueries({ queryKey: ["offers"] });
     },
   });
 };

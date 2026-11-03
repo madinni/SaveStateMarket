@@ -3,6 +3,7 @@ import cors from "cors";
 import passport from "passport";
 import authRoutes, { configurePassport } from "./auth.js";
 import resourceRoutes from "./resources.js";
+import adminRoutes from "./admin.js";
 import { HttpError } from "./http.js";
 
 export function createApp() {
@@ -20,6 +21,7 @@ export function createApp() {
   app.get("/", (_req, res) => res.json({ api: "SaveState Market", status: "online" }));
   app.use(authRoutes);
   app.use(resourceRoutes);
+  app.use(adminRoutes);
 
   app.use((_req, res) => res.status(404).json({ message: "Rota não encontrada." }));
 

@@ -11,7 +11,7 @@ import {
   useUpdateTicket,
   useDeleteTicket,
 } from "../hooks/useTickets";
-import { ticketSchema, TICKET_CATEGORIES } from "../schemas";
+import { guestTicketSchema, ticketSchema, TICKET_CATEGORIES } from "../schemas";
 
 const PRIORITIES = [
   { id: "LOW", label: "BAIXA", color: "border-slate-400 text-slate-200" },
@@ -25,16 +25,18 @@ const STATUS_STYLE = {
   CLOSED: ["[FECHADO]", "border-neon-mint text-neon-mint"],
 };
 
-const DEFAULTS = { category: "MEDIA_DEFECT", priority: "HIGH", subject: "", description: "" };
+const DEFAULTS = { category: "MEDIA_DEFECT", priority: "HIGH", subject: "", description: "", contact_email: "" };
 const categoryLabel = (value) => TICKET_CATEGORIES.find((c) => c.value === value)?.label || value;
 
 export default function SupportTicket() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isGuest = !user;
 
   const [editingId, setEditingId] = useState(null);
   const [notice, setNotice] = useState("");
   const [listError, setListError] = useState("");
+  const [submitError, setSubmitError] = useState(null);
 
   const createTicket = useCreateTicket();
   const updateTicket = useUpdateTicket();
@@ -46,16 +48,17 @@ export default function SupportTicket() {
     handleSubmit,
     reset,
     setValue,
+    setError,
     watch,
     formState: { errors },
-  } = useForm({ resolver: zodResolver(ticketSchema), defaultValues: DEFAULTS });
+    // Visitante precisa informar contact_email; logado, o contato é a própria conta.
+  } = useForm({ resolver: zodResolver(isGuest ? guestTicketSchema : ticketSchema), defaultValues: DEFAULTS });
 
   const priority = watch("priority");
   const subjectLen = watch("subject").trim().length;
   const descriptionLen = watch("description").trim().length;
   const isEditing = Boolean(editingId);
   const submitting = createTicket.isPending || updateTicket.isPending;
-  const submitError = createTicket.isError ? createTicket.error : updateTicket.isError ? updateTicket.error : null;
 
   const startEdit = (ticket) => {
     setNotice("");
@@ -65,39 +68,39 @@ export default function SupportTicket() {
       priority: ticket.priority,
       subject: ticket.subject,
       description: ticket.description,
+      contact_email: "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
+    setSubmitError(null);
     reset(DEFAULTS);
   };
 
+  // Erro com campo (ApiError.field) vai para o próprio campo; os demais aparecem no bloco de falha.
+  const showApiError = (err) => {
+    if (err.field && err.field in DEFAULTS) setError(err.field, { message: err.message });
+    else setSubmitError(err);
+  };
+
+  // Id, autor, status e datas são definidos pelo servidor; o cliente manda só o formulário.
   const onSubmit = async (values) => {
     setNotice("");
-    if (isEditing) {
-      try {
-        await updateTicket.mutateAsync({
-          id: editingId,
-          data: { ...values, updated_at: new Date().toISOString() },
-        });
+    setSubmitError(null);
+    try {
+      if (isEditing) {
+        await updateTicket.mutateAsync({ id: editingId, data: values });
         setEditingId(null);
         reset(DEFAULTS);
         setNotice("Ticket atualizado com sucesso.");
-      } catch {
-        /* o erro é exibido via updateTicket.isError */
+      } else {
+        await createTicket.mutateAsync(values);
       }
-      return;
+    } catch (err) {
+      showApiError(err);
     }
-    createTicket.mutate({
-      id: `TCK-${Date.now().toString(36).toUpperCase()}`,
-      author_id: user?.id || "GUEST_SESSION",
-      author_handle: user?.handle || "@Visitante_Anonimo",
-      ...values,
-      status: "OPEN",
-      created_at: new Date().toISOString(),
-    });
   };
 
   const onDelete = async (ticket) => {
@@ -210,6 +213,18 @@ export default function SupportTicket() {
             <FieldError error={errors.description} />
           </div>
 
+          {isGuest && (
+            <div className="space-y-1.5">
+              <label htmlFor="ticket-contact-email" className="block text-xs text-slate-200 font-bold uppercase tracking-wider">
+                // [05] E-MAIL PARA CONTATO *
+              </label>
+              <input id="ticket-contact-email" type="email" autoComplete="email" maxLength={120} placeholder="voce@exemplo.com"
+                {...register("contact_email")} className={`${field} px-3.5 py-2.5 focus:border-neon-cyan`} />
+              <p className="text-[10px] text-slate-400">Você está como visitante: a resposta será enviada para este e-mail.</p>
+              <FieldError error={errors.contact_email} />
+            </div>
+          )}
+
           <div className={isEditing ? "grid grid-cols-2 gap-2" : ""}>
             {isEditing && (
               <button type="button" onClick={cancelEdit}
@@ -256,6 +271,14 @@ export default function SupportTicket() {
                     <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-bold ${style}`}>{label}</span>
                   </div>
                   <p className="text-[11px] text-slate-300 bg-noir-950 border border-slate-800 p-2 leading-relaxed whitespace-pre-wrap">{t.description}</p>
+                  {t.admin_reply && (
+                    <div className="border border-neon-mint/50 bg-noir-950 p-2 space-y-1">
+                      <p className="text-[10px] font-bold text-neon-mint">
+                        // RESPOSTA DA ADMINISTRAÇÃO{t.replied_at ? ` · ${new Date(t.replied_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                      </p>
+                      <p className="text-[11px] text-slate-200 leading-relaxed whitespace-pre-wrap break-words">{t.admin_reply}</p>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-[10px] text-slate-500">
                     <span>
                       SEVERIDADE: {PRIORITIES.find((p) => p.id === t.priority)?.label || t.priority} ·{" "}

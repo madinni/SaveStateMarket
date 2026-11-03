@@ -94,6 +94,14 @@ export const ticketSchema = z.object({
   priority: z.enum(["LOW", "HIGH", "CRITICAL"], { error: "Prioridade inválida." }),
   subject: z.string().trim().min(5, "O assunto deve ter pelo menos 5 caracteres.").max(80),
   description: z.string().trim().min(15, "O relatório detalhado deve ter pelo menos 15 caracteres.").max(3000),
+  // Obrigatório para visitantes (checado na rota); opcional para quem está logado.
+  contact_email: z
+    .string({ error: "Informe um e-mail de contato válido." })
+    .trim()
+    .toLowerCase()
+    .email("Informe um e-mail de contato válido.")
+    .max(120)
+    .optional(),
 });
 
 export const ticketUpdateSchema = z.object({
@@ -136,4 +144,28 @@ export const refundCreateSchema = z.object({
 
 export const refundUpdateSchema = z.object({
   status: z.literal("paid", { error: "Só é possível marcar o reembolso como pago." }),
+});
+
+// ---- Denúncias de anúncio (usuário logado)
+export const REPORT_REASONS = ["FALSIFICADO", "GOLPE", "DESCRICAO_ENGANOSA", "CONTEUDO_IMPROPRIO", "OUTRO"];
+
+export const reportCreateSchema = z.object({
+  product_id: z.string({ error: "Informe o anúncio." }).trim().min(1, "Informe o anúncio."),
+  reason: z.enum(REPORT_REASONS, { error: "Motivo da denúncia inválido." }),
+  details: z.string().trim().max(500, "Os detalhes devem ter no máximo 500 caracteres.").optional(),
+});
+
+// ---- Administrador
+export const adminTicketUpdateSchema = z.object({
+  status: z.enum(["OPEN", "IN_PROGRESS", "CLOSED"], { error: "Status do ticket inválido." }).optional(),
+  admin_reply: z
+    .string({ error: "A resposta deve ser um texto." })
+    .trim()
+    .min(1, "Escreva a resposta.")
+    .max(3000, "A resposta deve ter no máximo 3000 caracteres.")
+    .optional(),
+});
+
+export const adminReportUpdateSchema = z.object({
+  status: z.literal("DISMISSED", { error: "Só é possível arquivar a denúncia (DISMISSED)." }),
 });

@@ -65,6 +65,12 @@ export default function Navbar() {
             HELP_LOG
           </span>
         </NavLink>
+        {user?.role === "admin" && (
+          <NavLink to="/admin" className={linkClass}>
+            <span className="font-pixel text-lg">#</span>
+            <span className="font-code text-[9px] tracking-tighter">ADMIN</span>
+          </NavLink>
+        )}
         <NavLink to="/profile" className={linkClass}>
           <span className="font-pixel text-lg">◉</span>
           <span className="font-code text-[9px] tracking-tighter">PROFILE</span>

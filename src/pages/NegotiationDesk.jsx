@@ -242,10 +242,13 @@ export default function NegotiationDesk() {
                         className={actionBtn(!isClosed, "bg-noir-800 border border-neon-pink text-neon-pink hover:bg-neon-pink/10 cursor-pointer")}>
                         RECUSAR
                       </button>
-                      <button type="button" onClick={handleDeleteChat} disabled={deleteOffer.isPending}
-                        className="font-bold text-[10px] px-3 py-1.5 chamfer-tag border border-slate-600 text-slate-300 hover:text-neon-pink hover:border-neon-pink transition-all disabled:opacity-50">
-                        {deleteOffer.isPending ? "EXCLUINDO..." : "EXCLUIR CHAT"}
-                      </button>
+                      {/* Negociação aceita é histórico da transação: a API recusa a exclusão (409). */}
+                      {selectedOffer.status !== "ACCEPTED" && (
+                        <button type="button" onClick={handleDeleteChat} disabled={deleteOffer.isPending}
+                          className="font-bold text-[10px] px-3 py-1.5 chamfer-tag border border-slate-600 text-slate-300 hover:text-neon-pink hover:border-neon-pink transition-all disabled:opacity-50">
+                          {deleteOffer.isPending ? "EXCLUINDO..." : "EXCLUIR CHAT"}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -258,6 +261,7 @@ export default function NegotiationDesk() {
                   {isClosed && (
                     <div className={`mb-2 bg-noir-950 border px-3 py-1 text-[11px] font-bold ${selectedOffer.status === "ACCEPTED" ? "border-neon-mint text-neon-mint" : "border-neon-pink text-neon-pink"}`}>
                       🔒 NEGOCIAÇÃO ENCERRADA [{selectedOffer.status === "ACCEPTED" ? "OFERTA ACEITA" : "OFERTA RECUSADA"}]. O CHAT ESTÁ EM MODO SOMENTE LEITURA.
+                      {selectedOffer.status === "ACCEPTED" && " O HISTÓRICO FICA GUARDADO E NÃO PODE SER EXCLUÍDO."}
                     </div>
                   )}
 

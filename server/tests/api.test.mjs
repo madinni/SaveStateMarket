@@ -7,10 +7,12 @@ import path from "node:path";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "savestate-"));
 process.env.DB_PATH = path.join(tmp, "db.json");
-process.env.SEGREDO = "segredo-de-teste";
+process.env.SEGREDO = "segredo-de-teste-com-pelo-menos-32-caracteres";
 
 const store = await import("../store.js");
 const { createApp } = await import("../app.js");
+const { resetLoginLimiter, problemaDoSegredo } = await import("../auth.js");
+const { garantirAdmin, migrate } = await import("../migrate.js");
 
 let server;
 let base;
@@ -49,6 +51,7 @@ async function signup(handle) {
 
 let ana;
 let bruno;
+let admin;
 
 before(async () => {
   store.reset({
@@ -57,11 +60,14 @@ before(async () => {
       { id: "game-002", title: "Chrono Trigger", platform: "SNES (CART)" },
     ],
   });
+  await garantirAdmin();
   server = createApp().listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${server.address().port}`;
   ana = await signup("Ana");
   bruno = await signup("Bruno");
+  const adminLogin = await call("POST", "/login", { body: { email: "admin", password: "admin" } });
+  admin = { token: adminLogin.body.token };
 });
 
 after(() => {
@@ -181,7 +187,7 @@ test("pedido: servidor calcula total, só o comprador aprova e o anúncio sai do
   assert.equal(again.status, 409);
 });
 
-test("reembolso: vendedor cancela entrega, conta bloqueia e libera ao pagar", async () => {
+test("reembolso: vendedor confirma o pagamento, mas só o admin libera a conta", async () => {
   const order = store.list("orders")[0];
   const refund = await call("POST", "/refunds", { token: ana.token, body: { order_id: order.id, amount: 1 } });
   assert.equal(refund.status, 201);
@@ -193,9 +199,40 @@ test("reembolso: vendedor cancela entrega, conta bloqueia e libera ao pagar", as
   const buyerTry = await call("POST", "/refunds", { token: bruno.token, body: { order_id: order.id } });
   assert.equal(buyerTry.status, 403);
 
+  // Admin não libera reembolso ainda pendente.
+  const cedo = await call("PATCH", `/admin/refunds/${refund.body.id}/liberar`, { token: admin.token });
+  assert.equal(cedo.status, 409);
+  assert.equal(cedo.body.message, "Só é possível liberar reembolsos já confirmados pelo vendedor.");
+
   const paid = await call("PATCH", `/refunds/${refund.body.id}`, { token: ana.token, body: { status: "paid" } });
   assert.equal(paid.status, 200);
+  assert.equal(paid.body.status, "paid");
+  assert.equal(store.get("profiles", ana.id).account_status, "refund_pending");
+  const aindaBloqueada = await call("POST", "/products", { token: ana.token, body: { game_id: "game-002", price: 10 } });
+  assert.equal(aindaBloqueada.status, 403);
+  const avisoVendedor = await call("GET", "/notifications", { token: ana.token });
+  assert.ok(avisoVendedor.body.some((n) => /aguarda a liberação do administrador/.test(n.body)));
+
+  // Duplicidade por pedido continua barrada, mesmo depois de pago.
+  const denovo = await call("POST", "/refunds", { token: ana.token, body: { order_id: order.id } });
+  assert.equal(denovo.status, 409);
+
+  const comum = await call("PATCH", `/admin/refunds/${refund.body.id}/liberar`, { token: ana.token });
+  assert.equal(comum.status, 403);
+  const inexistente = await call("PATCH", "/admin/refunds/nao-existe/liberar", { token: admin.token });
+  assert.equal(inexistente.status, 404);
+
+  const lista = await call("GET", "/admin/refunds", { token: admin.token });
+  assert.ok(lista.body.some((r) => r.id === refund.body.id));
+
+  const liberado = await call("PATCH", `/admin/refunds/${refund.body.id}/liberar`, { token: admin.token });
+  assert.equal(liberado.status, 200);
+  assert.equal(liberado.body.status, "released");
+  assert.ok(liberado.body.released_at);
   assert.equal(store.get("profiles", ana.id).account_status, "active");
+
+  const duasVezes = await call("PATCH", `/admin/refunds/${refund.body.id}/liberar`, { token: admin.token });
+  assert.equal(duasVezes.status, 409);
 });
 
 test("PATCH /usuarios/me ignora account_status vindo do cliente", async () => {
@@ -217,4 +254,333 @@ test("alerta: jogo do catálogo não aceita plataforma em que não existe", asyn
     body: { title: "Jogo Fora Do Catalogo", platform: "PS2 (DISC)", target_price: 50 },
   });
   assert.equal(ok.status, 201);
+});
+
+// ---------------------------------------------------------------- Correções do relatório 2026-11-03
+
+test("avaliação: sem transação responde 403; com pedido aprovado responde 201 (nas duas direções)", async () => {
+  const carla = await signup("Carla");
+  const davi = await signup("Davi");
+
+  const semTroca = await call("POST", "/profile_reviews", {
+    token: carla.token,
+    body: { profile_id: davi.id, rating: 1, comment: "Nunca negociei com ele." },
+  });
+  assert.equal(semTroca.status, 403);
+  assert.equal(semTroca.body.message, "Você só pode avaliar usuários com quem concluiu uma transação.");
+
+  // Pedido só pendente ainda não conta.
+  const product = await call("POST", "/products", { token: davi.token, body: { game_id: "game-002", price: 120 } });
+  const order = await call("POST", "/orders", { token: carla.token, body: { items: [{ product_id: product.body.id, quantity: 1 }] } });
+  assert.equal(order.status, 201);
+  const pendente = await call("POST", "/profile_reviews", {
+    token: carla.token,
+    body: { profile_id: davi.id, rating: 5, comment: "Ainda não paguei." },
+  });
+  assert.equal(pendente.status, 403);
+
+  await call("PATCH", `/orders/${order.body.id}`, { token: carla.token, body: { status: "approved" } });
+  const compradora = await call("POST", "/profile_reviews", {
+    token: carla.token,
+    body: { profile_id: davi.id, rating: 5, comment: "Entrega perfeita." },
+  });
+  assert.equal(compradora.status, 201);
+  assert.equal(compradora.body.badge, "[VERIFIED_TRADE]");
+  assert.equal(compradora.body.author_id, carla.id);
+
+  const vendedor = await call("POST", "/profile_reviews", {
+    token: davi.token,
+    body: { profile_id: carla.id, rating: 4, comment: "Pagou rápido." },
+  });
+  assert.equal(vendedor.status, 201);
+
+  // Terceiro sem transação também não edita avaliação legada sem troca.
+  const legada = store.insert("profile_reviews", {
+    id: "REV-legada", profile_id: davi.id, author_id: ana.id, rating: 2, comment: "Antiga", badge: "[VERIFIED_TRADE]",
+  });
+  const editLegada = await call("PATCH", `/profile_reviews/${legada.id}`, { token: ana.token, body: { rating: 1 } });
+  assert.equal(editLegada.status, 403);
+  store.remove("profile_reviews", legada.id);
+});
+
+test("ticket: visitante precisa de contact_email válido; logado não precisa", async () => {
+  const ticket = {
+    category: "PAGAMENTO",
+    priority: "LOW",
+    subject: "Dúvida sobre PIX",
+    description: "Não entendi como funciona o pagamento.",
+  };
+  const semEmail = await call("POST", "/tickets", { body: ticket });
+  assert.equal(semEmail.status, 400);
+  assert.equal(semEmail.body.field, "contact_email");
+
+  const emailRuim = await call("POST", "/tickets", { body: { ...ticket, contact_email: "nao-e-email" } });
+  assert.equal(emailRuim.status, 400);
+  assert.equal(emailRuim.body.field, "contact_email");
+
+  const visitante = await call("POST", "/tickets", { body: { ...ticket, contact_email: " Visitante@Exemplo.com " } });
+  assert.equal(visitante.status, 201);
+  assert.equal(visitante.body.contact_email, "visitante@exemplo.com");
+  assert.equal(store.get("tickets", visitante.body.id).contact_email, "visitante@exemplo.com");
+
+  const logado = await call("POST", "/tickets", { token: ana.token, body: ticket });
+  assert.equal(logado.status, 201);
+  assert.equal(logado.body.author_id, ana.id);
+});
+
+test("negociação aceita não pode ser excluída (409); a outra parte ainda toma 403 antes", async () => {
+  const accepted = store.find("offers", (o) => o.status === "ACCEPTED")[0];
+  assert.ok(accepted);
+  const intruso = await signup("Intruso");
+  const alheio = await call("DELETE", `/offers/${accepted.id}`, { token: intruso.token });
+  assert.equal(alheio.status, 403);
+  const inexistente = await call("DELETE", "/offers/nao-existe", { token: ana.token });
+  assert.equal(inexistente.status, 404);
+  const res = await call("DELETE", `/offers/${accepted.id}`, { token: ana.token });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.message, "Negociações aceitas não podem ser excluídas.");
+  assert.ok(store.get("offers", accepted.id));
+});
+
+test("_limit inválido é ignorado em vez de esvaziar a lista", async () => {
+  const todos = await call("GET", "/products");
+  assert.ok(todos.body.length > 0);
+  for (const limit of ["abc", "0", "-1"]) {
+    const res = await call("GET", `/products?_limit=${limit}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.length, todos.body.length);
+  }
+  const um = await call("GET", "/products?_limit=1");
+  assert.equal(um.body.length, 1);
+});
+
+test("login: 429 na 6ª falha seguida; sucesso zera o contador", async () => {
+  resetLoginLimiter();
+  const user = await signup("Limite");
+  const email = "limite@cefet.br";
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      assert.equal((await call("POST", "/login", { body: { email, password: "errada" } })).status, 401);
+    }
+    // Sucesso antes da 5ª falha zera o contador.
+    assert.equal((await call("POST", "/login", { body: { email, password: "segredo123" } })).status, 200);
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal((await call("POST", "/login", { body: { email: "LIMITE@cefet.br", password: "errada" } })).status, 401);
+    }
+    const bloqueado = await call("POST", "/login", { body: { email, password: "errada" } });
+    assert.equal(bloqueado.status, 429);
+    assert.equal(bloqueado.body.message, "Muitas tentativas de login. Tente novamente em alguns minutos.");
+    // Durante a janela, nem a senha certa entra; outro e-mail segue normal.
+    assert.equal((await call("POST", "/login", { body: { email, password: "segredo123" } })).status, 429);
+    assert.equal((await call("POST", "/login", { body: { email: "ana@cefet.br", password: "segredo123" } })).status, 200);
+    assert.ok(user.token);
+  } finally {
+    resetLoginLimiter();
+  }
+});
+
+test("SEGREDO ausente, de exemplo ou curto é recusado", () => {
+  assert.match(problemaDoSegredo(""), /não definido/);
+  assert.match(problemaDoSegredo("troque-por-um-segredo"), /valor de exemplo/);
+  assert.match(problemaDoSegredo("curto"), /pelo menos 32/);
+  assert.equal(problemaDoSegredo("x".repeat(32)), null);
+});
+
+// ---------------------------------------------------------------- Admin, denúncias e #17
+
+test("admin: entra com admin/admin; role vem no /usuarios/me e some do perfil público", async () => {
+  assert.ok(admin.token);
+  const me = await call("GET", "/usuarios/me", { token: admin.token });
+  assert.equal(me.body.role, "admin");
+  assert.equal(me.body.password_hash, undefined);
+  const publicos = await call("GET", "/profiles");
+  assert.ok(publicos.body.every((p) => p.role === undefined));
+  // garantirAdmin é idempotente.
+  assert.equal(await garantirAdmin(), false);
+  assert.equal(store.find("profiles", (p) => p.role === "admin").length, 1);
+});
+
+test("admin: cliente não consegue se promover a admin", async () => {
+  const reg = await call("POST", "/usuarios", {
+    body: { handle: "Esperto", email: "esperto@cefet.br", password: "segredo123", shipping_address: address, role: "admin" },
+  });
+  assert.equal(reg.status, 201);
+  assert.equal(store.get("profiles", reg.body.id).role, undefined);
+  const login = await call("POST", "/login", { body: { email: "esperto@cefet.br", password: "segredo123" } });
+  const patch = await call("PATCH", "/usuarios/me", { token: login.body.token, body: { role: "admin" } });
+  assert.equal(patch.body.role, undefined);
+  const viaProfiles = await call("PATCH", `/profiles/${reg.body.id}`, { token: login.body.token, body: { role: "admin" } });
+  assert.equal(viaProfiles.body.role, undefined);
+  assert.equal((await call("GET", "/admin/tickets", { token: login.body.token })).status, 403);
+});
+
+test("admin: sem token 401; usuário comum 403 em /admin/*", async () => {
+  for (const [method, url] of [
+    ["GET", "/admin/tickets"],
+    ["PATCH", "/admin/tickets/x"],
+    ["GET", "/admin/refunds"],
+    ["PATCH", "/admin/refunds/x/liberar"],
+    ["GET", "/admin/reports"],
+    ["PATCH", "/admin/reports/x"],
+    ["DELETE", "/admin/products/x"],
+  ]) {
+    assert.equal((await call(method, url)).status, 401, `${method} ${url} sem token`);
+    const comum = await call(method, url, { token: bruno.token, body: method === "GET" ? undefined : {} });
+    assert.equal(comum.status, 403, `${method} ${url} usuário comum`);
+    assert.equal(comum.body.message, "Acesso restrito ao administrador.");
+  }
+});
+
+test("admin: responde ticket, troca status e notifica o autor logado", async () => {
+  const ticket = await call("POST", "/tickets", {
+    token: bruno.token,
+    body: { category: "PAGAMENTO", priority: "HIGH", subject: "PIX não caiu", description: "Paguei o PIX e o pedido segue pendente." },
+  });
+  const todos = await call("GET", "/admin/tickets", { token: admin.token });
+  assert.ok(todos.body.some((t) => t.id === ticket.body.id));
+  assert.ok(todos.body.some((t) => t.author_id === "GUEST_SESSION" && t.contact_email));
+
+  const vazio = await call("PATCH", `/admin/tickets/${ticket.body.id}`, { token: admin.token, body: {} });
+  assert.equal(vazio.status, 400);
+  const ruim = await call("PATCH", `/admin/tickets/${ticket.body.id}`, { token: admin.token, body: { status: "XYZ" } });
+  assert.equal(ruim.status, 400);
+  assert.equal(ruim.body.field, "status");
+  const sumido = await call("PATCH", "/admin/tickets/nao-existe", { token: admin.token, body: { status: "CLOSED" } });
+  assert.equal(sumido.status, 404);
+
+  const resp = await call("PATCH", `/admin/tickets/${ticket.body.id}`, {
+    token: admin.token,
+    body: { status: "IN_PROGRESS", admin_reply: "Estamos verificando com o banco." },
+  });
+  assert.equal(resp.status, 200);
+  assert.equal(resp.body.status, "IN_PROGRESS");
+  assert.equal(resp.body.admin_reply, "Estamos verificando com o banco.");
+  assert.ok(resp.body.replied_at);
+  assert.ok(resp.body.updated_at);
+
+  const fechado = await call("PATCH", `/admin/tickets/${ticket.body.id}`, { token: admin.token, body: { status: "CLOSED" } });
+  assert.equal(fechado.body.status, "CLOSED");
+
+  const notas = await call("GET", "/notifications", { token: bruno.token });
+  assert.ok(notas.body.some((n) => n.type === "TICKET" && n.body.includes("Estamos verificando")));
+});
+
+test("denúncia: 201, 403 no próprio anúncio, 409 duplicada, 404 inexistente, 400 motivo inválido", async () => {
+  const prod = await call("POST", "/products", { token: bruno.token, body: { game_id: "game-002", price: 90 } });
+  assert.equal(prod.status, 201);
+
+  assert.equal((await call("POST", "/reports", { body: { product_id: prod.body.id, reason: "GOLPE" } })).status, 401);
+
+  const ok = await call("POST", "/reports", {
+    token: ana.token,
+    body: { product_id: prod.body.id, reason: "FALSIFICADO", details: "Cartucho com etiqueta impressa.", reporter_id: bruno.id },
+  });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.status, "OPEN");
+  assert.equal(ok.body.reporter_id, ana.id);
+  assert.equal(ok.body.reporter_handle, "@Ana");
+  assert.equal(ok.body.seller_id, bruno.id);
+  assert.equal(ok.body.seller_handle, "@Bruno");
+  assert.equal(ok.body.product_title, "Chrono Trigger");
+
+  const propria = await call("POST", "/reports", { token: bruno.token, body: { product_id: prod.body.id, reason: "OUTRO" } });
+  assert.equal(propria.status, 403);
+  const dup = await call("POST", "/reports", { token: ana.token, body: { product_id: prod.body.id, reason: "GOLPE" } });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.message, "Você já denunciou este anúncio.");
+  const nada = await call("POST", "/reports", { token: ana.token, body: { product_id: "nao-existe", reason: "GOLPE" } });
+  assert.equal(nada.status, 404);
+  const motivo = await call("POST", "/reports", { token: ana.token, body: { product_id: prod.body.id, reason: "CHATO" } });
+  assert.equal(motivo.status, 400);
+  assert.equal(motivo.body.field, "reason");
+  const longo = await call("POST", "/reports", {
+    token: ana.token,
+    body: { product_id: prod.body.id, reason: "OUTRO", details: "x".repeat(501) },
+  });
+  assert.equal(longo.status, 400);
+  assert.equal(longo.body.field, "details");
+
+  // Não há listagem pública de denúncias.
+  assert.equal((await call("GET", "/reports", { token: ana.token })).status, 404);
+
+  // Admin arquiva; depois disso a mesma pessoa pode denunciar de novo.
+  const arquivada = await call("PATCH", `/admin/reports/${ok.body.id}`, { token: admin.token, body: { status: "DISMISSED" } });
+  assert.equal(arquivada.status, 200);
+  assert.equal(arquivada.body.status, "DISMISSED");
+  assert.ok(arquivada.body.resolved_at);
+  const outraVez = await call("PATCH", `/admin/reports/${ok.body.id}`, { token: admin.token, body: { status: "DISMISSED" } });
+  assert.equal(outraVez.status, 409);
+  const invalida = await call("PATCH", `/admin/reports/${ok.body.id}`, { token: admin.token, body: { status: "OPEN" } });
+  assert.equal(invalida.status, 400);
+  const nova = await call("POST", "/reports", { token: ana.token, body: { product_id: prod.body.id, reason: "GOLPE" } });
+  assert.equal(nova.status, 201);
+});
+
+test("admin remove anúncio denunciado: cascata, denúncias resolvidas e vendedor avisado", async () => {
+  const prod = await call("POST", "/products", { token: bruno.token, body: { game_id: "game-gta6", price: 400 } });
+  const offer = await call("POST", "/offers", { token: ana.token, body: { product_id: prod.body.id, offered_price: 350 } });
+  assert.equal(offer.status, 201);
+  await call("POST", "/messages", { token: ana.token, body: { offer_id: offer.body.id, text: "Faz por 350?" } });
+  assert.ok(store.find("messages", (m) => m.offer_id === offer.body.id).length);
+
+  const rep = await call("POST", "/reports", { token: ana.token, body: { product_id: prod.body.id, reason: "GOLPE" } });
+  const lista = await call("GET", "/admin/reports", { token: admin.token });
+  assert.equal(lista.body[0].status, "OPEN");
+  assert.equal(lista.body.find((r) => r.id === rep.body.id).product_exists, true);
+
+  assert.equal((await call("DELETE", "/admin/products/nao-existe", { token: admin.token })).status, 404);
+  const del = await call("DELETE", `/admin/products/${prod.body.id}`, { token: admin.token });
+  assert.equal(del.status, 200);
+  assert.equal(store.get("products", prod.body.id), null);
+  assert.equal(store.get("offers", offer.body.id), null);
+  assert.equal(store.find("messages", (m) => m.offer_id === offer.body.id).length, 0);
+  const resolvida = store.get("reports", rep.body.id);
+  assert.equal(resolvida.status, "RESOLVED_REMOVED");
+  assert.ok(resolvida.resolved_at);
+  assert.equal(resolvida.product_title, "GTA VI");
+
+  const depois = await call("GET", "/admin/reports", { token: admin.token });
+  assert.equal(depois.body.find((r) => r.id === rep.body.id).product_exists, false);
+  const notas = await call("GET", "/notifications", { token: bruno.token });
+  assert.ok(notas.body.some((n) => n.title === "Anúncio removido"));
+});
+
+test("#17: 20 logins errados em paralelo geram no máximo 5 respostas 401; o resto é 429", async () => {
+  resetLoginLimiter();
+  await signup("Paralelo");
+  try {
+    const respostas = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        call("POST", "/login", { body: { email: "paralelo@cefet.br", password: "errada" } }),
+      ),
+    );
+    const status = respostas.map((r) => r.status);
+    const n401 = status.filter((s) => s === 401).length;
+    assert.ok(n401 <= 5, `401 demais: ${n401}`);
+    assert.equal(n401 + status.filter((s) => s === 429).length, 20);
+  } finally {
+    resetLoginLimiter();
+  }
+});
+
+test("migração: 'paid' legado vira 'released'; 'paid' do fluxo novo fica intacto", async () => {
+  const legado = await signup("Legado");
+  const novo = await signup("Novo");
+  store.update("profiles", novo.id, { account_status: "refund_pending" });
+  store.insert("refunds", { id: "RFD-LEGADO", seller_id: legado.id, status: "paid", paid_at: "2026-01-01T00:00:00.000Z" });
+  store.insert("refunds", { id: "RFD-NOVO", seller_id: novo.id, status: "paid", paid_at: "2026-01-02T00:00:00.000Z" });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    await migrate();
+    await migrate();
+  } finally {
+    console.log = log;
+  }
+  assert.equal(store.get("refunds", "RFD-LEGADO").status, "released");
+  assert.equal(store.get("refunds", "RFD-LEGADO").released_at, "2026-01-01T00:00:00.000Z");
+  assert.equal(store.get("refunds", "RFD-NOVO").status, "paid");
+  assert.equal(store.get("profiles", novo.id).account_status, "refund_pending");
+  store.remove("refunds", "RFD-LEGADO");
+  store.remove("refunds", "RFD-NOVO");
 });

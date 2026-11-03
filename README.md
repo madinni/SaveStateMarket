@@ -59,7 +59,8 @@ SaveStateMarket/
 │   ├── index.js            # Inicialização: carrega .env, roda a migração e sobe a API
 │   ├── app.js              # Middlewares (CORS, JSON, Passport) e tratamento de erros
 │   ├── auth.js             # Cadastro, login, JWT e perfis
-│   ├── resources.js        # Anúncios, jogos, ofertas, mensagens, tickets, pedidos, reembolsos...
+│   ├── resources.js        # Anúncios, jogos, ofertas, mensagens, tickets, pedidos, reembolsos, denúncias...
+│   ├── admin.js            # Rotas do administrador (/admin/*): tickets, reembolsos e denúncias
 │   ├── schemas.js          # Validação Zod do lado do servidor
 │   ├── store.js            # Camada de dados (leitura/escrita do db.json)
 │   ├── migrate.js          # Ajustes automáticos no db.json (ex.: hash de senhas antigas)
@@ -111,11 +112,15 @@ cp env .env
 Copy-Item env .env
 ```
 
-Depois, defina um valor próprio para `SEGREDO` no `.env`.
+Depois, defina um valor próprio para `SEGREDO` no `.env` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar um:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
 
 | Variável | Obrigatória | Padrão | Descrição |
 | :--- | :---: | :--- | :--- |
-| `SEGREDO` | ✅ | — | Segredo usado para assinar os tokens JWT. Sem ele a API não inicia. |
+| `SEGREDO` | ✅ | — | Segredo usado para assinar os tokens JWT. A API não inicia se ele faltar, for o valor de exemplo `troque-por-um-segredo` ou tiver menos de 32 caracteres. |
 | `PORT` | | `3001` | Porta da API. |
 | `CORS_ORIGIN` | | `http://localhost:5173` | Origem do frontend autorizada a chamar a API. |
 | `DB_PATH` | | `db.json` | Caminho do arquivo de banco de dados. |
@@ -156,21 +161,27 @@ Rotas marcadas com 🔒 exigem o cabeçalho `Authorization: Bearer <token>`. As 
 
 | Recurso | Endpoints |
 | :--- | :--- |
-| **Autenticação** | `POST /usuarios` (cadastro) · `POST /login` · 🔒 `GET/PATCH /usuarios/me` |
+| **Autenticação** | `POST /usuarios` (cadastro) · `POST /login` (após 5 falhas em 15 min para o mesmo IP + e-mail responde `429`) · 🔒 `GET/PATCH /usuarios/me` |
 | **Perfis públicos** | `GET /usuarios` · `GET /profiles` · `GET /profiles/:id` · 🔒 `PATCH /profiles/:id` (só o próprio) |
 | **Anúncios** | `GET /products` · `GET /products/:id` · 🔒 `POST /products` · 🔒 `PATCH/DELETE /products/:id` (só o anunciante) |
 | **Catálogo de jogos** | `GET /games` · `GET /games/:id` (somente leitura) |
 | **Referência de preço** | `GET/POST /price_references` · `PATCH /price_references/:id` |
-| **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` |
-| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` |
+| **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` (só com pedido `approved` entre as partes; senão `403`) |
+| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` (`DELETE` de negociação `ACCEPTED` responde `409`) |
 | **Mensagens** | 🔒 `GET/POST /messages` |
-| **Tickets** | `POST /tickets` (visitantes também) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
+| **Tickets** | `POST /tickets` (visitantes também, com `contact_email` obrigatório) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
 | **Notificações** | 🔒 `GET /notifications` · 🔒 `PATCH/DELETE /notifications/:id` |
 | **Alertas de preço** | 🔒 `GET/POST /price_alerts` · 🔒 `PATCH/DELETE /price_alerts/:id` |
 | **Pedidos** | 🔒 `GET/POST /orders` · 🔒 `GET/PATCH /orders/:id` |
-| **Reembolsos** | 🔒 `GET/POST /refunds` · 🔒 `PATCH /refunds/:id` |
+| **Reembolsos** | 🔒 `GET/POST /refunds` · 🔒 `PATCH /refunds/:id` (vendedor confirma o pagamento: `pending → paid`; a conta **continua bloqueada** até o admin liberar) |
+| **Denúncias** | 🔒 `POST /reports` (`reason`: `FALSIFICADO`, `GOLPE`, `DESCRICAO_ENGANOSA`, `CONTEUDO_IMPROPRIO` ou `OUTRO`; `403` no próprio anúncio, `409` se já houver denúncia aberta sua para o anúncio). Não há listagem pública. |
+| **Administrador** 🛡️ | 🔒 `GET /admin/tickets` · 🔒 `PATCH /admin/tickets/:id` (`status`, `admin_reply`) · 🔒 `GET /admin/refunds` · 🔒 `PATCH /admin/refunds/:id/liberar` (só `paid` → `released`; senão `409`) · 🔒 `GET /admin/reports` (abertas primeiro) · 🔒 `PATCH /admin/reports/:id` (`{ "status": "DISMISSED" }`) · 🔒 `DELETE /admin/products/:id` (remove o anúncio em cascata e marca as denúncias como `RESOLVED_REMOVED`) |
 
-Respostas de erro seguem o padrão `{ "message": "...", "field": "..." }`, com `400` (dados inválidos), `401` (sem token ou token inválido), `403` (registro de outra pessoa), `404` (não encontrado) e `409` (conflito).
+As rotas `/admin/*` exigem um usuário com `role: "admin"`: sem token respondem `401` e, para usuários comuns, `403` ("Acesso restrito ao administrador."). O papel nunca é definido pelo cliente.
+
+> ⚠️ **Conta de administrador de demonstração.** Ao subir, a API cria (se ainda não existir) o administrador com e-mail `admin` e senha `admin`. Essa credencial é fraca e pública: serve **só** para a demonstração acadêmica e nunca deve ir para um ambiente real.
+
+Respostas de erro seguem o padrão `{ "message": "...", "field": "..." }`, com `400` (dados inválidos), `401` (sem token ou token inválido), `403` (registro de outra pessoa), `404` (não encontrado), `409` (conflito) e `429` (muitas tentativas de login).
 
 ---
 

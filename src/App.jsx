@@ -7,6 +7,7 @@ import { CartProvider } from "./context/CartContext";
 import CRTOverlay from "./components/CRTOverlay";
 import Navbar from "./components/Navbar";
 import RequireAuth from "./components/RequireAuth";
+import RequireAdmin from "./components/RequireAdmin";
 import MarketFeed from "./pages/MarketFeed";
 import ProductDetails from "./pages/ProductDetails";
 import Checkout from "./pages/Checkout";
@@ -18,6 +19,10 @@ import Cadastrar from "./pages/Cadastrar";
 import SupportTicket from "./pages/SupportTicket";
 import SystemGuide from "./pages/SystemGuide";
 import NotificationsPage from "./pages/NotificationsPage";
+import AdminPanel from "./pages/AdminPanel";
+import AdminTickets from "./pages/AdminTickets";
+import AdminRefunds from "./pages/AdminRefunds";
+import AdminReports from "./pages/AdminReports";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +35,7 @@ const queryClient = new QueryClient({
 });
 
 const protect = (element) => <RequireAuth>{element}</RequireAuth>;
+const adminOnly = (element) => <RequireAdmin>{element}</RequireAdmin>;
 
 export default function App() {
   return (
@@ -59,6 +65,12 @@ export default function App() {
                   <Route path="/offers" element={protect(<NegotiationDesk />)} />
                   <Route path="/negotiation" element={protect(<NegotiationDesk />)} />
                   <Route path="/notifications" element={protect(<NotificationsPage />)} />
+
+                  {/* Só administrador (sem token → /entrar; sem role admin → /) */}
+                  <Route path="/admin" element={adminOnly(<AdminPanel />)} />
+                  <Route path="/admin/tickets" element={adminOnly(<AdminTickets />)} />
+                  <Route path="/admin/reembolsos" element={adminOnly(<AdminRefunds />)} />
+                  <Route path="/admin/denuncias" element={adminOnly(<AdminReports />)} />
                 </Routes>
                 <Navbar />
               </div>

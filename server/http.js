@@ -29,10 +29,10 @@ export function privateProfile(profile) {
   return safe;
 }
 
-// Perfil público: sem e-mail, hash, endereço e status da conta.
+// Perfil público: sem e-mail, hash, endereço, status da conta e papel (role).
 export function publicProfile(profile) {
   if (!profile) return null;
-  const { password_hash, email, shipping_address, account_status, ...safe } = profile; // eslint-disable-line no-unused-vars
+  const { password_hash, email, shipping_address, account_status, role, ...safe } = profile; // eslint-disable-line no-unused-vars
   return safe;
 }
 
@@ -53,6 +53,8 @@ export function applyQuery(rows, query = {}) {
       return a[key] > b[key] ? dir : -dir;
     });
   }
-  if (query._limit) result = result.slice(0, Number(query._limit));
+  // _limit inválido (ex.: "abc", 0, negativo) é ignorado em vez de esvaziar a lista.
+  const limit = Number(query._limit);
+  if (query._limit !== undefined && Number.isFinite(limit) && limit > 0) result = result.slice(0, limit);
   return result;
 }

@@ -11,7 +11,10 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { useProduct } from "../hooks/useProducts";
 import { useCreateOffer } from "../hooks/useOffers";
-import { offerSchema } from "../schemas";
+import { useCreateReport } from "../hooks/useReports";
+import { offerSchema, reportSchema, REPORT_REASONS } from "../schemas";
+
+const REPORT_DEFAULTS = { reason: "", details: "" };
 
 const newId = (prefix) => `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 
@@ -35,6 +38,13 @@ export default function ProductDetails() {
     resolver: zodResolver(offerSchema),
     defaultValues: { price: "", message: "" },
   });
+
+  // Denúncia do anúncio (UC15): formulário separado do de proposta.
+  const createReport = useCreateReport();
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [reportNotice, setReportNotice] = useState("");
+  const reportForm = useForm({ resolver: zodResolver(reportSchema), defaultValues: REPORT_DEFAULTS });
 
   if (isLoading) {
     return (
@@ -143,6 +153,31 @@ export default function ProductDetails() {
     reset({ price: "", message: "" });
   };
 
+  const openReport = () => {
+    if (!requireLogin() || isOwner) return;
+    setReportError("");
+    setShowReportModal(true);
+  };
+
+  const closeReport = () => {
+    setShowReportModal(false);
+    setReportError("");
+    reportForm.reset(REPORT_DEFAULTS);
+  };
+
+  const onSubmitReport = async ({ reason, details }) => {
+    setReportError("");
+    try {
+      await createReport.mutateAsync({ product_id: String(product.id), reason, ...(details ? { details } : {}) });
+      closeReport();
+      setReportNotice("Denúncia enviada. A moderação vai analisar este anúncio.");
+    } catch (err) {
+      // 409: já denunciado; 403: anúncio próprio; 404: anúncio removido. A mensagem vem do servidor.
+      if (err.field && err.field in REPORT_DEFAULTS) reportForm.setError(err.field, { message: err.message });
+      else setReportError(err.message || "Não foi possível enviar a denúncia.");
+    }
+  };
+
   const tag = (active, onClass) =>
     `border text-[10px] px-2 py-1 font-bold bg-noir-950 ${active ? onClass : "border-slate-800 text-slate-500"}`;
 
@@ -222,6 +257,18 @@ export default function ProductDetails() {
               </div>
             )}
           </div>
+
+          {!isOwner && (
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              {reportNotice && (
+                <p role="status" className="text-[11px] font-bold text-neon-mint">✓ {reportNotice}</p>
+              )}
+              <button type="button" onClick={openReport} disabled={!isProfileSynced}
+                className="w-full py-2.5 bg-noir-950 border border-neon-pink/60 text-neon-pink hover:bg-neon-pink/10 text-[10px] font-bold uppercase chamfer-tag tracking-widest disabled:opacity-50">
+                ⚑ DENUNCIAR ANÚNCIO
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
@@ -257,6 +304,47 @@ export default function ProductDetails() {
               </button>
               <button type="submit" disabled={createOffer.isPending} className="flex-1 py-2 bg-neon-cyan text-noir-950 text-xs font-black disabled:opacity-50">
                 {createOffer.isPending ? "ENVIANDO..." : "INICIAR CHAT"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 bg-noir-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={reportForm.handleSubmit(onSubmitReport)} noValidate role="dialog" aria-modal="true" aria-labelledby="report-title"
+            className="bg-noir-900 border-2 border-neon-pink p-5 max-w-sm w-full chamfer-box glow-pink space-y-4 shadow-2xl">
+            <div>
+              <h3 id="report-title" className="text-xs font-black text-white uppercase tracking-wider">DENUNCIAR // {product.title}</h3>
+              <p className="mt-1 text-[10px] text-slate-400">A denúncia vai para a moderação. O vendedor não vê quem denunciou.</p>
+            </div>
+
+            <div>
+              <label htmlFor="report-reason" className="block text-[10px] text-slate-400 mb-1">MOTIVO *</label>
+              <select id="report-reason" {...reportForm.register("reason")}
+                className="w-full h-10 bg-noir-950 border-2 border-slate-600 px-2 text-slate-100 text-xs focus:outline-none focus:border-neon-pink">
+                <option value="">Selecione...</option>
+                {REPORT_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              <FieldError error={reportForm.formState.errors.reason} />
+            </div>
+
+            <div>
+              <label htmlFor="report-details" className="block text-[10px] text-slate-400 mb-1">DETALHES (OPCIONAL)</label>
+              <textarea id="report-details" rows="3" maxLength={500} placeholder="Ex: as fotos são de outro anúncio."
+                {...reportForm.register("details")}
+                className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-pink resize-none" />
+              <FieldError error={reportForm.formState.errors.details} />
+            </div>
+
+            {reportError && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {reportError}</p>}
+
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={closeReport} className="flex-1 py-2 bg-noir-800 text-slate-300 border border-slate-600 text-xs font-bold">
+                CANCELAR
+              </button>
+              <button type="submit" disabled={createReport.isPending} className="flex-1 py-2 bg-neon-pink text-white text-xs font-black disabled:opacity-50">
+                {createReport.isPending ? "ENVIANDO..." : "ENVIAR DENÚNCIA"}
               </button>
             </div>
           </form>
