@@ -573,6 +573,21 @@
       "payment_method": "PIX",
       "payment_status": "CONFIRMED_DEMO",
       "paid_at": "2026-11-01T01:15:58.761Z"
+    },
+    {
+      "id": "OFF-45bf1d6417ff",
+      "product_id": "1rKQQpx",
+      "product_title": "Chrono Trigger",
+      "original_price": 240,
+      "offered_price": 220,
+      "buyer_id": "0cbb05dd-1c51-4daf-8aa2-14404d6ab28e",
+      "buyer_handle": "@admin",
+      "seller_id": "8f31c92a-0000-0000-0000-000000000001",
+      "seller_handle": "@Lume",
+      "status": "PENDING",
+      "last_action_by": "0cbb05dd-1c51-4daf-8aa2-14404d6ab28e",
+      "created_at": "2026-11-06T23:12:04.184Z",
+      "updated_at": "2026-11-06T23:12:04.184Z"
     }
   ],
   "messages": [
@@ -615,9 +630,28 @@
       "sender_handle": "PROTOCOL_BOT",
       "text": "[SISTEMA]: Pagamento PIX simulado confirmado no valor de R$ 350.00.",
       "timestamp": "2026-11-01T01:15:58.761Z"
+    },
+    {
+      "id": "MSG-42e09d07fe1d",
+      "offer_id": "OFF-45bf1d6417ff",
+      "sender_id": "0cbb05dd-1c51-4daf-8aa2-14404d6ab28e",
+      "sender_handle": "@admin",
+      "text": "esse valor em dinheiro amanha no nova america rola?",
+      "timestamp": "2026-11-06T23:12:04.189Z"
     }
   ],
-  "notifications": [],
+  "notifications": [
+    {
+      "id": "NTF-344b3c10a0ee",
+      "user_id": "8f31c92a-0000-0000-0000-000000000001",
+      "type": "OFFER",
+      "title": "Nova proposta recebida",
+      "body": "@admin ofereceu R$ 220.00 por \"Chrono Trigger\".",
+      "link": "/offers",
+      "read": false,
+      "created_at": "2026-11-06T23:12:04.185Z"
+    }
+  ],
   "price_alerts": [
     {
       "id": "ALR-51b989880dbc",

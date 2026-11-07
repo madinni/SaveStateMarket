@@ -142,13 +142,17 @@ export const notificationsApi = {
 export const gamesApi = {
   list: () => request("/games?_sort=title&_order=asc"),
   get: (id) => request(`/games/${id}`),
+  create: (data) => request("/games", json("POST", data)),
+  update: (id, data) => request(`/games/${id}`, json("PATCH", data)),
+  remove: (id) => request(`/games/${id}`, { method: "DELETE" }),
 };
 
-// Cache das referências de preço externas (CheapShark).
+// Referência de preço: a consulta à CheapShark e o cache ficam no servidor.
 export const priceRefsApi = {
-  findByKey: (key) => request(`/price_references?ref_key=${encodeURIComponent(key)}`),
-  create: (data) => request("/price_references", json("POST", data)),
+  lookup: (title) => request(`/price_references/lookup?title=${q(title)}`),
+  saveManual: (data) => request("/price_references", json("POST", data)),
   update: (id, data) => request(`/price_references/${id}`, json("PATCH", data)),
+  remove: (id) => request(`/price_references/${id}`, { method: "DELETE" }),
 };
 
 // Denúncias de anúncio (UC15). Só criação: a lista é exclusiva do administrador.

@@ -6,6 +6,7 @@ const TABS = [
   { to: "/admin/tickets", label: "TICKETS" },
   { to: "/admin/reembolsos", label: "REEMBOLSOS" },
   { to: "/admin/denuncias", label: "DENÚNCIAS" },
+  { to: "/admin/games", label: "JOGOS" },
 ];
 
 // Abas do painel do administrador (rolagem horizontal só dentro da própria barra no celular).

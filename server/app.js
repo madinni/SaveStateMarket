@@ -5,6 +5,7 @@ import authRoutes, { configurePassport } from "./auth.js";
 import resourceRoutes from "./resources.js";
 import adminRoutes from "./admin.js";
 import { HttpError } from "./http.js";
+import catalogRoutes from "./catalog.js";
 
 export function createApp() {
   configurePassport();
@@ -20,6 +21,7 @@ export function createApp() {
 
   app.get("/", (_req, res) => res.json({ api: "SaveState Market", status: "online" }));
   app.use(authRoutes);
+  app.use(catalogRoutes);
   app.use(resourceRoutes);
   app.use(adminRoutes);
 

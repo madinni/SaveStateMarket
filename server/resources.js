@@ -82,22 +82,11 @@ router.delete("/products/:id", exigeJwt, (req, res) => {
 // ---------------------------------------------------------------- Catálogo (somente leitura)
 router.get("/games", (req, res) => res.json(applyQuery(store.list("games"), req.query)));
 router.get("/games/:id", (req, res) => res.json(exigeItem("games", req.params.id, "Jogo")));
-const adminOnly = () => fail(403, "Somente administradores podem alterar o catálogo.");
-router.post("/games", exigeJwt, adminOnly);
-router.patch("/games/:id", exigeJwt, adminOnly);
-router.delete("/games/:id", exigeJwt, adminOnly);
 
 // ---------------------------------------------------------------- Referência de preço (cache CheapShark)
 // Leitura e escrita públicas de propósito: visitantes também consultam o benchmark.
 // TODO: mover a consulta à CheapShark para o servidor e fechar a escrita.
 router.get("/price_references", (req, res) => res.json(applyQuery(store.list("price_references"), req.query)));
-router.post("/price_references", (req, res) => {
-  res.status(201).json(store.insert("price_references", { ...(req.body || {}), id: store.newId("ref-") }));
-});
-router.patch("/price_references/:id", (req, res) => {
-  exigeItem("price_references", req.params.id, "Referência");
-  res.json(store.update("price_references", req.params.id, req.body || {}));
-});
 
 // ---------------------------------------------------------------- Avaliações
 const reviewAuthor = (review, user) =>

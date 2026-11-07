@@ -23,6 +23,7 @@ import AdminPanel from "./pages/AdminPanel";
 import AdminTickets from "./pages/AdminTickets";
 import AdminRefunds from "./pages/AdminRefunds";
 import AdminReports from "./pages/AdminReports";
+import AdminGames from "./pages/AdminGames";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,7 @@ export default function App() {
                   <Route path="/admin/tickets" element={adminOnly(<AdminTickets />)} />
                   <Route path="/admin/reembolsos" element={adminOnly(<AdminRefunds />)} />
                   <Route path="/admin/denuncias" element={adminOnly(<AdminReports />)} />
+                  <Route path="/admin/games" element={adminOnly(<AdminGames />)} />
                 </Routes>
                 <Navbar />
               </div>

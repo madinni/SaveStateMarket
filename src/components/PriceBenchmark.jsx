@@ -4,7 +4,7 @@ import { compareWithReference } from "../services/priceReference";
 import { formatBRL } from "../utils/format";
 
 export default function PriceBenchmark({ product }) {
-  const { data: ref, isLoading, isError } = usePriceReference(product.title);
+  const { data: ref, isLoading, isError, error } = usePriceReference(product.title);
   const price = Number(product.price ?? 0);
   const diff = compareWithReference(price, ref);
 
@@ -16,7 +16,8 @@ export default function PriceBenchmark({ product }) {
     );
   }
 
-  if (isError) {
+  // 404 = título fora do catálogo: tratado como "sem referência", não como falha.
+  if (isError && error?.status !== 404) {
     return (
       <div role="alert" className="bg-noir-950 p-3 border border-neon-pink text-xs text-neon-pink font-bold">
         ⚠ BENCHMARK INDISPONÍVEL NO MOMENTO. TENTE NOVAMENTE MAIS TARDE.
@@ -35,8 +36,10 @@ export default function PriceBenchmark({ product }) {
     );
   }
 
+  const manual = ref.source === "MANUAL";
   const cheaper = diff <= 0;
   const tone = cheaper ? "text-neon-mint border-neon-mint" : "text-neon-amber border-neon-amber";
+  const updatedAt = new Date(ref.fetched_at).toLocaleDateString("pt-BR");
 
   return (
     <div className="bg-noir-950 p-3 border border-neon-cyan/40 text-xs space-y-2">
@@ -53,20 +56,27 @@ export default function PriceBenchmark({ product }) {
           <span className="font-pixel text-xl text-neon-cyan leading-none">{formatBRL(price)}</span>
         </div>
         <div className="bg-noir-900 border border-slate-800 p-2">
-          <span className="block text-[9px] text-slate-500">REFERÊNCIA DIGITAL</span>
+          <span className="block text-[9px] text-slate-500">{manual ? "REFERÊNCIA DE MERCADO" : "REFERÊNCIA DIGITAL"}</span>
           <span className="font-pixel text-xl text-white leading-none">{formatBRL(ref.price_brl)}</span>
         </div>
       </div>
 
-      <p className="text-[10px] text-slate-400 leading-relaxed">
-        Fonte: {ref.source} • Correspondência: {ref.matched_title} • US$ {Number(ref.price_usd).toFixed(2)} × R${" "}
-        {Number(ref.usd_brl).toFixed(2)}
-        {ref.fx_estimated ? " (câmbio estimado)" : ""} • Atualizado em{" "}
-        {new Date(ref.fetched_at).toLocaleDateString("pt-BR")}
-      </p>
-      <p className="text-[10px] text-slate-500 leading-relaxed">
-        A referência é o menor preço atual da versão digital (PC). Mídias físicas de colecionador podem valer mais.
-      </p>
+      {manual ? (
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          Fonte: valor de mercado informado pela administração • Atualizado em {updatedAt}
+        </p>
+      ) : (
+        <>
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            Fonte: {ref.source} • Correspondência: {ref.matched_title} • US$ {Number(ref.price_usd).toFixed(2)} × R${" "}
+            {Number(ref.usd_brl).toFixed(2)}
+            {ref.fx_estimated ? " (câmbio estimado)" : ""} • Atualizado em {updatedAt}
+          </p>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            A referência é o menor preço atual da versão digital (PC). Mídias físicas de colecionador podem valer mais.
+          </p>
+        </>
+      )}
     </div>
   );
 }
