@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import CrtToggle from "../components/CrtToggle";
+import DesktopNav from "../components/DesktopNav";
 import { useNavigate, useParams, Link, Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -201,8 +202,9 @@ export default function DropAsset() {
   const field = "w-full bg-noir-900 border border-noir-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-neon-pink";
 
   return (
-    <div className="min-h-screen pb-28 text-slate-200">
-      <header className="sticky top-0 z-40 bg-noir-950/90 backdrop-blur-md border-b border-noir-700/70 px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen pb-nav text-slate-200">
+      <header className="sticky top-0 z-40 bg-noir-950/90 backdrop-blur-md border-b border-noir-700/70">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Link to={isEdit ? `/product/${id}` : "/"} className="text-neon-cyan hover:text-white text-xs font-code">[ESC]</Link>
           <div className="h-4 w-px bg-noir-700"></div>
@@ -215,6 +217,11 @@ export default function DropAsset() {
           <span className="font-code text-[10px] text-neon-mint border border-neon-mint/30 px-2 py-0.5 chamfer-tag bg-noir-900">
             SEC_LVL: 04
           </span>
+        </div>
+        </div>
+        {/* Desktop (lg+): mesma navegação principal do Header. */}
+        <div className="hidden lg:block border-t border-noir-800/80">
+          <DesktopNav className="max-w-6xl mx-auto px-4" />
         </div>
       </header>
 

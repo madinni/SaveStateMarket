@@ -8,6 +8,31 @@ const money = (label = "valor") =>
     .positive(`O ${label} deve ser maior que zero.`)
     .max(100000, `O ${label} máximo é R$ 100.000,00.`);
 
+// #28: imagens (avatar_url, image_url, cover_url) só como URL http(s) ou data URL de imagem
+// raster em base64 (é o que o front gera no upload: canvas.toDataURL("image/jpeg")).
+// Recusa javascript:, vbscript:, data:text/html, data:image/svg+xml etc.
+export const IMAGEM_MAX = 1_500_000; // caracteres da data URL (~1,1 MB de imagem)
+const URL_HTTP = /^https?:\/\/[^\s]+$/i;
+const DATA_IMAGEM = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i;
+
+export const urlSegura = (label = "A imagem") =>
+  z
+    .string({ error: `${label} deve ser um texto.` })
+    .trim()
+    .max(IMAGEM_MAX, `${label} é muito grande (máximo de 1,5 MB).`)
+    .refine(
+      (v) => v === "" || URL_HTTP.test(v) || DATA_IMAGEM.test(v),
+      `${label} deve ser uma URL http(s) ou uma imagem PNG, JPEG, WEBP ou GIF.`,
+    );
+
+// #32: o bcrypt só usa os primeiros 72 bytes; acima disso a senha seria cortada sem aviso.
+const bytes = (s) => new TextEncoder().encode(s).length;
+const senhaNova = (label, required) =>
+  z
+    .string({ error: required })
+    .min(8, `${label} deve ter pelo menos 8 caracteres.`)
+    .refine((v) => bytes(v) <= 72, `${label} deve ter no máximo 72 bytes (72 caracteres sem acento).`);
+
 export const shippingAddressSchema = z.object({
   postal_code: z.string().trim().regex(/^\d{5}-?\d{3}$/, "Informe um CEP válido."),
   street: z.string().trim().min(3, "Informe a rua ou avenida."),
@@ -24,7 +49,7 @@ export const registerSchema = z.object({
     .trim()
     .regex(/^@?[A-Za-z0-9_]{3,20}$/, "Use de 3 a 20 caracteres: letras, números ou _."),
   email: z.string({ error: "Informe o e-mail." }).trim().toLowerCase().email("E-mail inválido."),
-  password: z.string({ error: "Informe a senha." }).min(6, "A senha deve ter pelo menos 6 caracteres."),
+  password: senhaNova("A senha", "Informe a senha."),
   shipping_address: shippingAddressSchema,
 });
 
@@ -34,33 +59,43 @@ export const loginSchema = z.object({
 });
 
 export const updateMeSchema = z.object({
-  avatar_url: z.string().max(2_000_000, "Imagem muito grande.").optional(),
+  avatar_url: urlSegura("A foto de perfil").optional(),
   shipping_address: shippingAddressSchema.optional(),
 });
 
+// Troca de senha (PATCH /usuarios/me/senha). O bcrypt só usa os primeiros 72 bytes.
+export const changePasswordSchema = z
+  .object({
+    current_password: z.string({ error: "Informe a senha atual." }).min(1, "Informe a senha atual."),
+    new_password: senhaNova("A nova senha", "Informe a nova senha."),
+  })
+  .refine((d) => d.new_password !== d.current_password, {
+    message: "A nova senha deve ser diferente da atual.",
+    path: ["new_password"],
+  });
+
+// #30: o anúncio sempre aponta para um jogo do catálogo; título e plataforma vêm do jogo
+// (campos title/platform enviados pelo cliente são descartados pelo Zod).
 export const productSchema = z.object({
-  game_id: z.string().optional(),
-  title: z.string().trim().min(1, "Informe o título.").max(120).optional(),
-  platform: z.string().trim().max(40).optional(),
+  game_id: z.string({ error: "Selecione um jogo do catálogo." }).trim().min(1, "Selecione um jogo do catálogo."),
   price: money("preço"),
   has_box: z.boolean().optional().default(false),
   has_manual: z.boolean().optional().default(false),
   is_functional: z.boolean().optional().default(true),
   condition_tag: z.string().max(40).optional(),
-  image_url: z.string().max(5_000_000).optional(),
+  image_url: urlSegura("A foto do anúncio").optional(),
 });
 
 // Na edição tudo é opcional e nada recebe valor padrão (o que não vier fica como está).
+// Sem game_id, o jogo (título/plataforma) atual é mantido.
 export const productUpdateSchema = z.object({
-  game_id: z.string().optional(),
-  title: z.string().trim().min(1).max(120).optional(),
-  platform: z.string().trim().max(40).optional(),
+  game_id: z.string().trim().min(1, "Selecione um jogo do catálogo.").optional(),
   price: money("preço").optional(),
   has_box: z.boolean().optional(),
   has_manual: z.boolean().optional(),
   is_functional: z.boolean().optional(),
   condition_tag: z.string().max(40).optional(),
-  image_url: z.string().max(5_000_000).optional(),
+  image_url: urlSegura("A foto do anúncio").optional(),
 });
 
 export const offerCreateSchema = z.object({
@@ -102,6 +137,12 @@ export const ticketSchema = z.object({
     .email("Informe um e-mail de contato válido.")
     .max(120)
     .optional(),
+});
+
+// Consulta pública de ticket de visitante (POST /tickets/consulta).
+export const ticketConsultaSchema = z.object({
+  id: z.string({ error: "Informe o número do ticket." }).trim().toUpperCase().min(1, "Informe o número do ticket.").max(60),
+  codigo: z.string({ error: "Informe o código de consulta." }).trim().toUpperCase().min(1, "Informe o código de consulta.").max(32),
 });
 
 export const ticketUpdateSchema = z.object({

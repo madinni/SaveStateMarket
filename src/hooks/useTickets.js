@@ -20,3 +20,6 @@ export const useCreateTicket = () => useTicketMutation(ticketsApi.create);
 export const useUpdateTicket = () =>
   useTicketMutation(({ id, data }) => ticketsApi.update(id, data));
 export const useDeleteTicket = () => useTicketMutation(ticketsApi.remove);
+
+// Consulta do visitante por id + código. É uma ação (POST), não uma lista em cache.
+export const useLookupTicket = () => useMutation({ mutationFn: ticketsApi.lookup });

@@ -34,6 +34,9 @@ export const shippingAddressFormSchema = z.object({
   shipping_address: shippingAddressSchema,
 });
 
+// O bcrypt do servidor só usa os primeiros 72 bytes da senha (acentos ocupam 2 bytes).
+const byteLength = (value) => new TextEncoder().encode(value).length;
+
 export const registerSchema = z.object({
   handle: z
     .string()
@@ -43,7 +46,10 @@ export const registerSchema = z.object({
       "Use de 3 a 20 caracteres: letras, números ou _.",
     ),
   email: z.string().trim().min(1, "Informe o e-mail.").email("E-mail inválido."),
-  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres."),
+  password: z
+    .string()
+    .min(8, "A senha deve ter pelo menos 8 caracteres.")
+    .refine((v) => byteLength(v) <= 72, "A senha deve ter no máximo 72 bytes (72 caracteres sem acento)."),
   shipping_address: shippingAddressSchema,
 });
 
@@ -87,7 +93,7 @@ export const ticketSchema = z.object({
   description: z
     .string()
     .trim()
-    .min(15, "O relatório detalhado deve ter pelo menos 15 caracteres."),
+    .min(15, "A descrição deve ter pelo menos 15 caracteres."),
 });
 
 // Visitante (sem login) precisa deixar um e-mail para receber a resposta do ticket.
@@ -152,4 +158,30 @@ export const TICKET_STATUSES = [
 export const adminTicketSchema = z.object({
   status: z.enum(TICKET_STATUSES.map((s) => s.value)),
   admin_reply: z.string().trim().max(3000, "Máximo de 3000 caracteres."),
+});
+
+// ---- Troca de senha (PATCH /usuarios/me/senha) ----
+// 72 é o limite do bcrypt. A confirmação e a regra "diferente da atual" são só do formulário.
+export const changePasswordSchema = z
+  .object({
+    current_password: z.string().min(1, "Informe a senha atual."),
+    new_password: z
+      .string()
+      .min(8, "A nova senha deve ter pelo menos 8 caracteres.")
+      .refine((v) => byteLength(v) <= 72, "A nova senha deve ter no máximo 72 bytes (72 caracteres sem acento)."),
+    confirm_password: z.string().min(1, "Confirme a nova senha."),
+  })
+  .refine((v) => v.new_password === v.confirm_password, {
+    path: ["confirm_password"],
+    message: "As senhas não conferem.",
+  })
+  .refine((v) => !v.current_password || v.new_password !== v.current_password, {
+    path: ["new_password"],
+    message: "A nova senha deve ser diferente da atual.",
+  });
+
+// ---- Consulta de ticket por visitante (POST /tickets/consulta) ----
+export const ticketLookupSchema = z.object({
+  id: z.string().trim().min(1, "Informe o número do ticket."),
+  codigo: z.string().trim().min(1, "Informe o código de acesso."),
 });

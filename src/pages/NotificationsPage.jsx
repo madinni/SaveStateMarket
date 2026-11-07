@@ -59,10 +59,10 @@ function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-bold text-white truncate">{alert.title}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 mt-0.5">
             {alert.platform || "QUALQUER PLATAFORMA"} · ALVO: <strong className="text-neon-mint">{brl(alert.target_price)}</strong>
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             {cheapest ? (
               <>
                 MENOR ANÚNCIO AGORA:{" "}
@@ -74,13 +74,13 @@ function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
             )}
           </p>
         </div>
-        <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-bold ${alert.active ? "border-neon-amber text-neon-amber" : "border-neon-mint text-neon-mint"}`}>
+        <span className={`shrink-0 border px-2 py-0.5 text-xs font-bold ${alert.active ? "border-neon-amber text-neon-amber" : "border-neon-mint text-neon-mint"}`}>
           {alert.active ? "[ATIVO]" : "[DISPARADO]"}
         </span>
       </div>
 
       {!alert.active && alert.triggered_at && (
-        <p className="text-[10px] text-slate-400">
+        <p className="text-xs text-slate-400">
           Disparado em {when(alert.triggered_at)} com um anúncio a {brl(alert.triggered_price)}.{" "}
           {triggeredProduct && (
             <Link to={`/product/${triggeredProduct.id}`} className="text-neon-cyan underline">ver anúncio</Link>
@@ -94,10 +94,10 @@ function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
           <FieldError error={errors.target_price} />
           <div className="flex gap-2">
             <button type="button" onClick={() => { setEditing(false); reset({ target_price: alert.target_price }); }}
-              className="flex-1 py-1.5 bg-noir-800 text-slate-300 border border-slate-600 text-[11px] font-bold">
+              className="flex-1 py-1.5 bg-noir-800 text-slate-300 border border-slate-600 text-xs font-bold">
               CANCELAR
             </button>
-            <button type="submit" disabled={busy} className="flex-1 py-1.5 bg-neon-amber text-noir-950 text-[11px] font-black disabled:opacity-50">
+            <button type="submit" disabled={busy} className="flex-1 py-1.5 bg-neon-amber text-noir-950 text-xs font-black disabled:opacity-50">
               SALVAR
             </button>
           </div>
@@ -105,11 +105,11 @@ function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
       ) : (
         <div className="flex gap-2">
           <button type="button" onClick={() => setEditing(true)}
-            className="px-2.5 py-1 border border-neon-cyan text-neon-cyan text-[10px] font-bold">
+            className="px-2.5 py-1 border border-neon-cyan text-neon-cyan text-xs font-bold">
             {alert.active ? "ALTERAR ALVO" : "REATIVAR"}
           </button>
           <button type="button" onClick={() => onDelete(alert.id)} disabled={busy}
-            className="px-2.5 py-1 border border-neon-pink text-neon-pink text-[10px] font-bold disabled:opacity-50">
+            className="px-2.5 py-1 border border-neon-pink text-neon-pink text-xs font-bold disabled:opacity-50">
             REMOVER
           </button>
         </div>
@@ -173,7 +173,7 @@ function NewAlertForm() {
       <p className="text-neon-amber font-bold">▼ NOVO ALERTA DE PREÇO</p>
 
       <div>
-        <label htmlFor="new-alert-title" className="block text-[10px] text-slate-400 mb-1">TÍTULO DO JOGO</label>
+        <label htmlFor="new-alert-title" className="block text-xs text-slate-400 mb-1">TÍTULO DO JOGO</label>
         <input id="new-alert-title" list="alert-title-options" placeholder="Ex: GTA VI" autoComplete="off"
           {...register("title")} className={inputClass} />
         <datalist id="alert-title-options">
@@ -183,7 +183,7 @@ function NewAlertForm() {
       </div>
 
       <div>
-        <label htmlFor="new-alert-platform" className="block text-[10px] text-slate-400 mb-1">PLATAFORMA (OPCIONAL)</label>
+        <label htmlFor="new-alert-platform" className="block text-xs text-slate-400 mb-1">PLATAFORMA (OPCIONAL)</label>
         <select id="new-alert-platform" {...register("platform")} className={inputClass}>
           <option value="">
             {catalogPlatforms.length === 1 ? `Qualquer (só existe em ${platformOptions[0].label})` : "Qualquer plataforma"}
@@ -191,23 +191,23 @@ function NewAlertForm() {
           {platformOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
         {catalogPlatforms.length > 0 && (
-          <p className="mt-1 text-[10px] text-slate-500">Plataformas em que este jogo existe no catálogo.</p>
+          <p className="mt-1 text-xs text-slate-500">Plataformas em que este jogo existe no catálogo.</p>
         )}
       </div>
 
       <div>
-        <label htmlFor="new-alert-target" className="block text-[10px] text-slate-400 mb-1">ME AVISE QUANDO HOUVER ANÚNCIO POR ATÉ (R$)</label>
+        <label htmlFor="new-alert-target" className="block text-xs text-slate-400 mb-1">ME AVISE QUANDO HOUVER ANÚNCIO POR ATÉ (R$)</label>
         <input id="new-alert-target" type="number" step="0.01" placeholder="Ex: 200" {...register("target_price")} className={inputClass} />
         <FieldError error={errors.target_price} />
       </div>
 
       <button type="submit" disabled={createAlert.isPending}
-        className="w-full py-2 bg-neon-amber text-noir-950 text-[11px] font-black disabled:opacity-50">
+        className="w-full py-2 bg-neon-amber text-noir-950 text-xs font-black disabled:opacity-50">
         {createAlert.isPending ? "CRIANDO..." : "ATIVAR ALERTA"}
       </button>
 
-      {error && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {error}</p>}
-      {created && <p role="status" className="text-[11px] font-bold text-neon-mint">✓ {created}</p>}
+      {error && <p role="alert" className="text-xs font-bold text-neon-pink">⚠ {error}</p>}
+      {created && <p role="status" className="text-xs font-bold text-neon-mint">✓ {created}</p>}
     </form>
   );
 }
@@ -249,7 +249,7 @@ export default function NotificationsPage() {
     `py-2 chamfer-tag font-bold ${tab === name ? "bg-neon-pink text-white glow-pink" : "text-slate-400"}`;
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header
         title="NOTIFICATION"
         titleHighlight="CENTER"
@@ -260,7 +260,7 @@ export default function NotificationsPage() {
         badgeType={unread.length > 0 ? "pink" : "mint"}
       />
 
-      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
+      <main className="max-w-md md:max-w-3xl mx-auto px-4 pt-4 space-y-4">
         <div className="grid grid-cols-2 gap-1 bg-noir-900 p-1 border border-noir-700 text-xs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === "notifications"} onClick={() => setTab("notifications")} className={tabClass("notifications")}>
             [NOTIFICAÇÕES]
@@ -278,7 +278,7 @@ export default function NotificationsPage() {
 
         {tab === "notifications" ? (
           <section className="space-y-3">
-            <div className="flex flex-wrap gap-2 text-[10px] font-bold">
+            <div className="flex flex-wrap gap-2 text-xs font-bold">
               <button type="button" disabled={unread.length === 0 || markAllRead.isPending}
                 onClick={() => run(() => markAllRead.mutateAsync(unread.map((n) => n.id)))}
                 className="px-2.5 py-1 border border-neon-cyan text-neon-cyan disabled:opacity-40">
@@ -310,9 +310,9 @@ export default function NotificationsPage() {
                         {!n.read && <span className="inline-block w-1.5 h-1.5 bg-neon-pink rounded-full mr-1.5 align-middle"></span>}
                         {n.title}
                       </p>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">{n.body}</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">{n.body}</p>
                     </button>
-                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
                       <span>{when(n.created_at)}</span>
                       <button type="button" onClick={() => run(() => deleteNotifications.mutateAsync([n.id]))}
                         className="text-slate-400 hover:text-neon-pink font-bold">
@@ -326,7 +326,7 @@ export default function NotificationsPage() {
           </section>
         ) : (
           <section className="space-y-3">
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs text-slate-400">
               O alerta é do jogo, não de um anúncio: quando qualquer vendedor anunciar o título pelo seu
               preço alvo ou menos, você recebe uma notificação aqui.
             </p>

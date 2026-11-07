@@ -6,7 +6,7 @@ import * as store from "./store.js";
 import { exigeAdmin } from "./auth.js";
 import { fail, parse, sameId, now, applyQuery } from "./http.js";
 import { notify } from "./notify.js";
-import { exigeItem, removeProductCascade, brl } from "./resources.js";
+import { exigeItem, removeProductCascade, brl, semSegredoTicket } from "./resources.js";
 import * as S from "./schemas.js";
 
 const router = Router();
@@ -16,7 +16,8 @@ const TICKET_STATUS_LABEL = { OPEN: "aberto", IN_PROGRESS: "em andamento", CLOSE
 
 // ---------------------------------------------------------------- Tickets
 router.get("/admin/tickets", (req, res) => {
-  res.json(applyQuery(store.list("tickets"), req.query));
+  // O hash do código de consulta do visitante nunca é exposto, nem ao admin.
+  res.json(applyQuery(store.list("tickets"), req.query).map(semSegredoTicket));
 });
 
 router.patch("/admin/tickets/:id", (req, res) => {
@@ -31,7 +32,7 @@ router.patch("/admin/tickets/:id", (req, res) => {
     patch.replied_at = patch.updated_at;
     patch.replied_by = req.user.id;
   }
-  const updated = store.update("tickets", ticket.id, patch);
+  const updated = semSegredoTicket(store.update("tickets", ticket.id, patch));
 
   // Visitante (GUEST_SESSION) não tem conta: o admin usa o contact_email exibido na tela.
   if (ticket.author_id && ticket.author_id !== "GUEST_SESSION") {

@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../services/api";
 import { clearToken, getToken, setToken } from "../services/tokenStorage";
+import { notify } from "../utils/toast";
 
 export { API_URL } from "../config";
 
@@ -43,6 +44,14 @@ export const AuthProvider = ({ children }) => {
     [queryClient],
   );
 
+  // Troca o token da sessão atual sem recarregar o perfil (ex.: a troca de senha devolve
+  // um token novo e derruba os anteriores).
+  const replaceToken = useCallback((newToken) => {
+    if (!newToken) return;
+    setToken(newToken);
+    setTokenState(newToken);
+  }, []);
+
   // Atualiza o usuário em cache com o perfil devolvido pela API.
   const login = useCallback(
     (profile) => {
@@ -70,10 +79,16 @@ export const AuthProvider = ({ children }) => {
     },
   });
 
-  // Lança erro em caso de falha, para a tela exibir a mensagem.
+  // Avisa o usuário por toast e relança o erro, para a tela também exibir a mensagem inline.
   const updateAvatar = async (newBase64) => {
     if (!token) return;
-    await avatarMutation.mutateAsync(newBase64);
+    try {
+      await avatarMutation.mutateAsync(newBase64);
+      notify.success("Foto de perfil atualizada.");
+    } catch (error) {
+      notify.error(`Não foi possível atualizar a foto: ${error.message || "erro desconhecido."}`);
+      throw error;
+    }
   };
 
   const user = token ? meQuery.data ?? null : null;
@@ -90,7 +105,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isProfileSynced, signIn, login, logout, updateAvatar }}
+      value={{ user, token, isProfileSynced, signIn, login, logout, updateAvatar, replaceToken }}
     >
       {children}
     </AuthContext.Provider>

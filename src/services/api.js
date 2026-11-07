@@ -1,5 +1,5 @@
 import { API_URL } from "../config";
-import { getToken } from "./tokenStorage";
+import { getToken, setToken } from "./tokenStorage";
 
 // Erro com o status HTTP e a mensagem que o servidor mandou.
 export class ApiError extends Error {
@@ -39,7 +39,9 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     // Token vencido ou adulterado: o AuthContext apaga o token e manda para /entrar.
-    if (response.status === 401 && token) emit("auth:unauthorized");
+    // Se o token já foi trocado no meio do caminho (ex.: troca de senha), o 401 é do token
+    // antigo e não derruba a sessão nova.
+    if (response.status === 401 && token && token === getToken()) emit("auth:unauthorized");
     throw new ApiError(
       response.status,
       data?.message || `Falha na comunicação com o servidor (HTTP ${response.status}).`,
@@ -65,6 +67,14 @@ export const authApi = {
   login: (data) => request("/login", json("POST", data)),
   me: () => request("/usuarios/me"),
   updateMe: (data) => request("/usuarios/me", json("PATCH", data)),
+  // { current_password, new_password } → 200 { message, token }; senha atual errada → 400 field
+  // "current_password"; 429 após muitas tentativas. A troca derruba os tokens antigos, então o
+  // token novo é gravado aqui mesmo, antes de qualquer outra requisição usar o antigo.
+  changePassword: (data) =>
+    request("/usuarios/me/senha", json("PATCH", data)).then((result) => {
+      if (result?.token) setToken(result.token);
+      return result;
+    }),
 };
 
 export const productsApi = {
@@ -103,9 +113,12 @@ export const reviewsApi = {
 };
 
 // O servidor já devolve só os tickets de quem está logado.
+// Visitante (sem token): o POST devolve também o access_code em claro, uma única vez.
 export const ticketsApi = {
   listByAuthor: () => request(`/tickets?${NEWEST_FIRST}`),
   create: (data) => request("/tickets", json("POST", data)),
+  // Consulta pública do visitante: { id, codigo } → status e resposta do admin (404 se não bater; 429 se abusar).
+  lookup: (data) => request("/tickets/consulta", json("POST", data)),
   update: (id, data) => request(`/tickets/${id}`, json("PATCH", data)),
   remove: (id) => request(`/tickets/${id}`, { method: "DELETE" }),
 };

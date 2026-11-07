@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
 import AdminTabs from "../components/AdminTabs";
+import ChangePasswordForm from "../components/ChangePasswordForm";
 import { useAdminReports, useAdminRefunds, useAdminTickets } from "../hooks/useAdmin";
 
 // Resumo do que está esperando o administrador em cada fila.
@@ -29,7 +30,7 @@ export default function AdminPanel() {
   const reports = useAdminReports();
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header title="NULL" titleHighlight="ADMIN" subtitle="CONSOLE DO ADMINISTRADOR" backLink="/" badgeText="ROOT" badgeType="pink" />
       <main className="max-w-lg mx-auto px-4 pt-4 space-y-4">
         <AdminTabs />
@@ -48,6 +49,9 @@ export default function AdminPanel() {
           countOf={(list) => list.filter((r) => r.status === "OPEN").length}
           hint="Denúncias abertas aguardando análise."
           accent={{ border: "border-neon-pink/60", text: "text-neon-pink" }} />
+
+        {/* A conta inicial do admin é de demonstração: troque a senha padrão por aqui. */}
+        <ChangePasswordForm idPrefix="admin-pwd" />
       </main>
     </div>
   );

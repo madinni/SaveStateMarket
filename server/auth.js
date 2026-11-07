@@ -7,7 +7,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import * as store from "./store.js";
 import { fail, parse, privateProfile, publicProfile, now, HttpError } from "./http.js";
-import { registerSchema, loginSchema, updateMeSchema } from "./schemas.js";
+import { registerSchema, loginSchema, updateMeSchema, changePasswordSchema } from "./schemas.js";
+import { criarLimitador, ipDe } from "./rateLimit.js";
 
 const SEGREDO_PLACEHOLDER = "troque-por-um-segredo";
 const SEGREDO_MIN = 32;
@@ -34,39 +35,41 @@ const SEGREDO = () => {
   return process.env.SEGREDO;
 };
 
-// ---- Limite de tentativas de login (em memória)
-// Conta só as tentativas que FALHARAM por IP + e-mail. Após 5 falhas dentro de 15 minutos,
-// responde 429 até a janela expirar. Um login bem-sucedido zera o contador.
-const LOGIN_MAX_FALHAS = 5;
+// ---- Limites de tentativas (em memória, ver rateLimit.js)
+// Login: conta só as tentativas que FALHARAM. Duas chaves:
+// - IP + e-mail: 5 falhas em 15 min → 429 (um login bem-sucedido zera essa chave);
+// - só IP (#26, contra password spraying): 20 falhas em 15 min → 429, mesmo trocando o
+//   e-mail. O sucesso NÃO zera esta, para quem tem uma conta não "limpar" o próprio IP.
 const LOGIN_JANELA_MS = 15 * 60 * 1000;
-const falhasLogin = new Map(); // chave → { count, inicio }
+const loginPorEmail = criarLimitador({ max: 5, janelaMs: LOGIN_JANELA_MS });
+const loginPorIp = criarLimitador({ max: 20, janelaMs: LOGIN_JANELA_MS });
+// #25: troca de senha por usuário: 5 tentativas (com a senha atual conferida) em 15 min.
+const trocaSenha = criarLimitador({ max: 5, janelaMs: 15 * 60 * 1000 });
+// #27: cadastro por IP: 10 por hora.
+const cadastroPorIp = criarLimitador({ max: 10, janelaMs: 60 * 60 * 1000 });
 
-const chaveLogin = (req, email) => `${req.ip || req.socket?.remoteAddress || "?"}|${email}`;
-
-function registroAtivo(chave, agora = Date.now()) {
-  const registro = falhasLogin.get(chave);
-  if (!registro) return null;
-  if (agora - registro.inicio >= LOGIN_JANELA_MS) {
-    falhasLogin.delete(chave);
-    return null;
-  }
-  return registro;
-}
-
-function registrarFalha(chave) {
-  const agora = Date.now();
-  const registro = registroAtivo(chave, agora);
-  if (registro) registro.count += 1;
-  else falhasLogin.set(chave, { count: 1, inicio: agora });
-  // Faxina simples para o Map não crescer sem limite.
-  if (falhasLogin.size > 10000) {
-    for (const [k, r] of falhasLogin) if (agora - r.inicio >= LOGIN_JANELA_MS) falhasLogin.delete(k);
-  }
-}
+const chaveLogin = (req, email) => `${ipDe(req)}|${email}`;
 
 // Usado pelos testes para não deixar o limitador vazar entre cenários.
 export function resetLoginLimiter() {
-  falhasLogin.clear();
+  loginPorEmail.resetAll();
+  loginPorIp.resetAll();
+}
+
+// ---- Tokens
+// O iat vai com milissegundos (NumericDate fracionário é válido na RFC 7519) para comparar
+// com password_changed_at sem a folga de 1 s: o token emitido logo após a troca vale, o
+// emitido antes dela não (#24).
+export function emitirToken(user) {
+  return jwt.sign({ sub: user.id, iat: Date.now() / 1000 }, SEGREDO(), { expiresIn: "1h" });
+}
+
+// #24: token emitido antes da última troca de senha é recusado (401).
+function tokenRevogado(payload, user) {
+  if (!user.password_changed_at) return false;
+  const trocadaEm = Date.parse(user.password_changed_at);
+  if (!Number.isFinite(trocadaEm)) return false;
+  return Math.round(Number(payload.iat) * 1000) < trocadaEm;
 }
 
 export function configurePassport() {
@@ -78,7 +81,8 @@ export function configurePassport() {
       },
       (payload, done) => {
         const user = store.get("profiles", payload.sub);
-        done(null, user || false);
+        if (!user || tokenRevogado(payload, user)) return done(null, false);
+        done(null, user);
       },
     ),
   );
@@ -120,7 +124,11 @@ export const isBlocked = (user) => user?.account_status === "refund_pending";
 const router = Router();
 
 // Cadastro: 201 sem a senha; 409 para e-mail ou handle repetido.
+// Limite por IP (#27): 10 cadastros por hora, contados antes do bcrypt e da escrita no disco.
 router.post("/usuarios", async (req, res) => {
+  const ip = ipDe(req);
+  if (cadastroPorIp.bloqueado(ip)) fail(429, "Muitos cadastros a partir desta rede. Tente novamente mais tarde.");
+  cadastroPorIp.hit(ip);
   const body = parse(registerSchema, req.body);
   const handle = body.handle.startsWith("@") ? body.handle : `@${body.handle}`;
 
@@ -155,22 +163,25 @@ router.post("/usuarios", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = parse(loginSchema, req.body);
   const chave = chaveLogin(req, email);
-  const registro = registroAtivo(chave);
-  if (registro && registro.count >= LOGIN_MAX_FALHAS) {
+  const ip = ipDe(req);
+  if (loginPorEmail.bloqueado(chave) || loginPorIp.bloqueado(ip)) {
     fail(429, "Muitas tentativas de login. Tente novamente em alguns minutos.");
   }
 
   // A tentativa conta ANTES do await do bcrypt: assim requisições em paralelo não passam
-  // todas pela checagem acima com o contador ainda zerado (#17). O sucesso zera a chave.
-  registrarFalha(chave);
+  // todas pela checagem acima com o contador ainda zerado (#17). O sucesso zera só a chave
+  // IP + e-mail (a do IP sozinho continua contando as falhas, #26).
+  loginPorEmail.hit(chave);
+  loginPorIp.hit(ip);
 
   const user = store.find("profiles", (p) => String(p.email).toLowerCase() === email)[0];
   const ok = user ? await bcrypt.compare(password, String(user.password_hash || "")) : false;
   if (!ok) fail(401, "E-mail ou senha inválidos.");
-  falhasLogin.delete(chave);
+  loginPorEmail.reset(chave);
+  // O sucesso não conta como falha do IP: desfaz a tentativa registrada acima.
+  loginPorIp.desfazer(ip);
 
-  const token = jwt.sign({ sub: user.id }, SEGREDO(), { expiresIn: "1h" });
-  res.json({ token });
+  res.json({ token: emitirToken(user) });
 });
 
 router.get("/usuarios/me", exigeJwt, (req, res) => {
@@ -185,6 +196,25 @@ function updateMe(req, res) {
   res.json(privateProfile(updated));
 }
 router.patch("/usuarios/me", exigeJwt, updateMe);
+
+// Troca de senha (vale para o admin também). Exige a senha atual; grava um novo hash bcrypt.
+// #25: até 5 tentativas por usuário em 15 min (contadas antes do bcrypt; o sucesso zera).
+// #24: grava password_changed_at, o que derruba todos os tokens anteriores, e devolve um
+// token novo para a sessão atual continuar: 200 { message, token }.
+router.patch("/usuarios/me/senha", exigeJwt, async (req, res) => {
+  const { current_password, new_password } = parse(changePasswordSchema, req.body);
+  const chave = String(req.user.id);
+  if (trocaSenha.bloqueado(chave)) {
+    fail(429, "Muitas tentativas de troca de senha. Tente novamente em alguns minutos.");
+  }
+  trocaSenha.hit(chave);
+  const ok = await bcrypt.compare(current_password, String(req.user.password_hash || ""));
+  if (!ok) fail(400, "Senha atual incorreta.", "current_password");
+  const password_hash = await bcrypt.hash(new_password, 10);
+  const user = store.update("profiles", req.user.id, { password_hash, password_changed_at: now() });
+  trocaSenha.reset(chave);
+  res.json({ message: "Senha alterada com sucesso.", token: emitirToken(user) });
+});
 
 // Perfis públicos (sem e-mail, hash, endereço e status da conta).
 const listPublic = (req, res) => res.json(store.list("profiles").map(publicProfile));

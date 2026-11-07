@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastContainer } from "react-toastify";
 import { AuthProvider } from "./context/AuthContext";
 import { CrtProvider } from "./context/CrtContext";
 import { CartProvider } from "./context/CartContext";
@@ -45,7 +46,7 @@ export default function App() {
         <CrtProvider>
           <CartProvider>
             <BrowserRouter>
-              <div className="bg-noir-950 font-mono antialiased min-h-screen relative overflow-x-hidden selection:bg-neon-pink selection:text-white">
+              <div className="bg-noir-950 font-mono antialiased min-h-screen relative overflow-x-clip selection:bg-neon-pink selection:text-white">
                 <CRTOverlay />
                 <Routes>
                   {/* Públicas */}
@@ -75,6 +76,16 @@ export default function App() {
                   <Route path="/admin/games" element={adminOnly(<AdminGames />)} />
                 </Routes>
                 <Navbar />
+                {/* Único container de toasts do app (helper em utils/toast.js). Tema neon em index.css. */}
+                <ToastContainer
+                  position="top-right"
+                  theme="dark"
+                  autoClose={4000}
+                  newestOnTop
+                  closeOnClick
+                  pauseOnFocusLoss={false}
+                  limit={4}
+                />
               </div>
             </BrowserRouter>
           </CartProvider>

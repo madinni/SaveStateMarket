@@ -35,7 +35,7 @@ export default function AdminRefunds() {
   };
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header title="NULL" titleHighlight="REEMBOLSOS" subtitle="CONSOLE DO ADMINISTRADOR // PIX" backLink="/admin" badgeText="ROOT" badgeType="pink" />
       <main className="max-w-lg mx-auto px-4 pt-4 space-y-4">
         <AdminTabs />

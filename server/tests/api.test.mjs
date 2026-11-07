@@ -1,5 +1,5 @@
 // Testes de integração (node --test). Usam um db temporário, nunca o db.json real.
-import { test, before, after } from "node:test";
+import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,6 +13,8 @@ const store = await import("../store.js");
 const { createApp } = await import("../app.js");
 const { resetLoginLimiter, problemaDoSegredo } = await import("../auth.js");
 const { garantirAdmin, migrate } = await import("../migrate.js");
+const { resetConsultaTicketLimiter } = await import("../resources.js");
+const { resetAllLimiters } = await import("../rateLimit.js");
 
 let server;
 let base;
@@ -69,6 +71,10 @@ before(async () => {
   const adminLogin = await call("POST", "/login", { body: { email: "admin", password: "admin" } });
   admin = { token: adminLogin.body.token };
 });
+
+// Os limites por IP (cadastro, tickets de visitante, login) valem para o arquivo todo, já que
+// todas as requisições saem do mesmo IP; cada cenário começa com os contadores zerados.
+beforeEach(() => resetAllLimiters());
 
 after(() => {
   server?.close();
@@ -583,4 +589,236 @@ test("migração: 'paid' legado vira 'released'; 'paid' do fluxo novo fica intac
   assert.equal(store.get("profiles", novo.id).account_status, "refund_pending");
   store.remove("refunds", "RFD-LEGADO");
   store.remove("refunds", "RFD-NOVO");
+});
+
+// ---------------------------------------------------------------- #21: troca de senha
+test("#21: troca de senha — 401 sem token, 400 senha atual errada, 400 nova inválida, 200 e login com a nova", async () => {
+  resetLoginLimiter();
+  const user = await signup("TrocaSenha");
+  const email = "trocasenha@cefet.br";
+  try {
+    const semToken = await call("PATCH", "/usuarios/me/senha", {
+      body: { current_password: "segredo123", new_password: "novaSenha123" },
+    });
+    assert.equal(semToken.status, 401);
+
+    const errada = await call("PATCH", "/usuarios/me/senha", {
+      token: user.token,
+      body: { current_password: "errada", new_password: "novaSenha123" },
+    });
+    assert.equal(errada.status, 400);
+    assert.deepEqual(errada.body, { message: "Senha atual incorreta.", field: "current_password" });
+
+    const curta = await call("PATCH", "/usuarios/me/senha", {
+      token: user.token,
+      body: { current_password: "segredo123", new_password: "curta" },
+    });
+    assert.equal(curta.status, 400);
+    assert.equal(curta.body.field, "new_password");
+
+    const igual = await call("PATCH", "/usuarios/me/senha", {
+      token: user.token,
+      body: { current_password: "segredo123", new_password: "segredo123" },
+    });
+    assert.equal(igual.status, 400);
+    assert.equal(igual.body.field, "new_password");
+
+    const longa = await call("PATCH", "/usuarios/me/senha", {
+      token: user.token,
+      body: { current_password: "segredo123", new_password: "x".repeat(73) },
+    });
+    assert.equal(longa.status, 400);
+    assert.equal(longa.body.field, "new_password");
+
+    const hashAntes = store.get("profiles", user.id).password_hash;
+    const ok = await call("PATCH", "/usuarios/me/senha", {
+      token: user.token,
+      body: { current_password: "segredo123", new_password: "novaSenha123" },
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.message, "Senha alterada com sucesso.");
+    assert.ok(ok.body.token); // #24: token novo para a sessão atual
+    const hashDepois = store.get("profiles", user.id).password_hash;
+    assert.notEqual(hashDepois, hashAntes);
+    assert.match(hashDepois, /^\$2[aby]\$/);
+
+    const antiga = await call("POST", "/login", { body: { email, password: "segredo123" } });
+    assert.equal(antiga.status, 401);
+    const nova = await call("POST", "/login", { body: { email, password: "novaSenha123" } });
+    assert.equal(nova.status, 200);
+    assert.ok(nova.body.token);
+  } finally {
+    resetLoginLimiter();
+  }
+});
+
+test("#21: o admin também troca a própria senha", async () => {
+  resetLoginLimiter();
+  try {
+    const ok = await call("PATCH", "/usuarios/me/senha", {
+      token: admin.token,
+      body: { current_password: "admin", new_password: "admin-nova-123" },
+    });
+    assert.equal(ok.status, 200);
+    const login = await call("POST", "/login", { body: { email: "admin", password: "admin-nova-123" } });
+    assert.equal(login.status, 200);
+    // Volta a senha para não afetar outros cenários.
+    const volta = await call("PATCH", "/usuarios/me/senha", {
+      token: login.body.token,
+      body: { current_password: "admin-nova-123", new_password: "admin-demo-1" },
+    });
+    assert.equal(volta.status, 200);
+    admin.token = (await call("POST", "/login", { body: { email: "admin", password: "admin-demo-1" } })).body.token;
+    assert.ok(admin.token);
+  } finally {
+    resetLoginLimiter();
+  }
+});
+
+// ---------------------------------------------------------------- #10: código de consulta do ticket
+test("#10: visitante recebe access_code uma vez; consulta funciona; hash nunca é exposto", async () => {
+  resetConsultaTicketLimiter();
+  const ticket = {
+    category: "CONTA",
+    priority: "HIGH",
+    subject: "Não consigo me cadastrar",
+    description: "O formulário de cadastro não aceita o meu CEP.",
+    contact_email: "visitante2@exemplo.com",
+  };
+  const criado = await call("POST", "/tickets", { body: ticket });
+  assert.equal(criado.status, 201);
+  assert.match(criado.body.access_code, /^[A-Z0-9]{8}$/);
+  assert.equal(criado.body.access_code_hash, undefined);
+  const salvo = store.get("tickets", criado.body.id);
+  assert.match(salvo.access_code_hash, /^[0-9a-f]{64}$/);
+  assert.equal(salvo.access_code, undefined);
+
+  // Ticket de usuário logado não ganha código.
+  const logado = await call("POST", "/tickets", { token: ana.token, body: ticket });
+  assert.equal(logado.body.access_code, undefined);
+  assert.equal(store.get("tickets", logado.body.id).access_code_hash, undefined);
+
+  // O admin responde; o visitante consulta com o código (aceita minúsculas e espaços).
+  await call("PATCH", `/admin/tickets/${criado.body.id}`, {
+    token: admin.token,
+    body: { status: "IN_PROGRESS", admin_reply: "Use o CEP com hífen, por favor." },
+  });
+  const consulta = await call("POST", "/tickets/consulta", {
+    body: { id: criado.body.id.toLowerCase(), codigo: ` ${criado.body.access_code.toLowerCase()} ` },
+  });
+  assert.equal(consulta.status, 200);
+  assert.equal(consulta.body.id, criado.body.id);
+  assert.equal(consulta.body.subject, ticket.subject);
+  assert.equal(consulta.body.status, "IN_PROGRESS");
+  assert.equal(consulta.body.admin_reply, "Use o CEP com hífen, por favor.");
+  assert.ok(consulta.body.created_at);
+  assert.ok(consulta.body.updated_at);
+  for (const campo of ["access_code_hash", "contact_email", "description", "author_id", "replied_by"]) {
+    assert.equal(consulta.body[campo], undefined, `consulta não deveria expor ${campo}`);
+  }
+
+  const MSG = "Ticket não encontrado ou código inválido.";
+  const errado = await call("POST", "/tickets/consulta", { body: { id: criado.body.id, codigo: "ZZZZZZZZ" } });
+  assert.equal(errado.status, 404);
+  assert.equal(errado.body.message, MSG);
+  const inexistente = await call("POST", "/tickets/consulta", { body: { id: "TCK-NAO-EXISTE", codigo: criado.body.access_code } });
+  assert.equal(inexistente.status, 404);
+  assert.equal(inexistente.body.message, MSG);
+  // Ticket de usuário logado (sem código) também não é consultável por aqui.
+  const semCodigo = await call("POST", "/tickets/consulta", { body: { id: logado.body.id, codigo: "ABCDEFGH" } });
+  assert.equal(semCodigo.status, 404);
+  const vazio = await call("POST", "/tickets/consulta", { body: { id: criado.body.id } });
+  assert.equal(vazio.status, 400);
+  assert.equal(vazio.body.field, "codigo");
+
+  const lista = await call("GET", "/admin/tickets", { token: admin.token });
+  assert.ok(lista.body.some((t) => t.id === criado.body.id));
+  assert.ok(lista.body.every((t) => t.access_code_hash === undefined));
+  const patch = await call("PATCH", `/admin/tickets/${criado.body.id}`, { token: admin.token, body: { status: "CLOSED" } });
+  assert.equal(patch.body.access_code_hash, undefined);
+  resetConsultaTicketLimiter();
+});
+
+test("#10: consulta de ticket tem limite por IP (429 depois de 10 tentativas)", async () => {
+  resetConsultaTicketLimiter();
+  try {
+    const status = [];
+    for (let i = 0; i < 12; i += 1) {
+      status.push((await call("POST", "/tickets/consulta", { body: { id: "TCK-X", codigo: "AAAAAAAA" } })).status);
+    }
+    assert.deepEqual(status.slice(0, 10), Array(10).fill(404));
+    assert.deepEqual(status.slice(10), [429, 429]);
+  } finally {
+    resetConsultaTicketLimiter();
+  }
+});
+
+// ---------------------------------------------------------------- #18: histórico da negociação aceita
+test("#18: venda aprovada preserva a negociação ACCEPTED e o chat; as outras somem", async () => {
+  const vendedora = await signup("Vendedora18");
+  const comprador = await signup("Comprador18");
+  const curioso = await signup("Curioso18");
+  const prod = await call("POST", "/products", { token: vendedora.token, body: { game_id: "game-002", price: 300 } });
+  assert.equal(prod.status, 201);
+
+  const aceita = await call("POST", "/offers", { token: comprador.token, body: { product_id: prod.body.id, offered_price: 280 } });
+  const outra = await call("POST", "/offers", { token: curioso.token, body: { product_id: prod.body.id, offered_price: 200 } });
+  await call("POST", "/messages", { token: comprador.token, body: { offer_id: aceita.body.id, text: "Fecha por 280?" } });
+  await call("POST", "/messages", { token: curioso.token, body: { offer_id: outra.body.id, text: "Faz por 200?" } });
+  const ok = await call("PATCH", `/offers/${aceita.body.id}`, { token: vendedora.token, body: { status: "ACCEPTED" } });
+  assert.equal(ok.body.status, "ACCEPTED");
+  const msgsAntes = store.find("messages", (m) => m.offer_id === aceita.body.id).length;
+  assert.equal(msgsAntes, 2);
+
+  const order = await call("POST", "/orders", { token: comprador.token, body: { items: [{ product_id: prod.body.id, quantity: 1 }] } });
+  assert.equal(order.status, 201);
+  const aprovado = await call("PATCH", `/orders/${order.body.id}`, { token: comprador.token, body: { status: "approved" } });
+  assert.equal(aprovado.body.status, "approved");
+  assert.equal(store.get("products", prod.body.id), null);
+
+  // A negociação não aceita e as mensagens dela foram apagadas.
+  assert.equal(store.get("offers", outra.body.id), null);
+  assert.equal(store.find("messages", (m) => m.offer_id === outra.body.id).length, 0);
+
+  // A aceita continua, com o retrato do anúncio.
+  for (const parte of [comprador, vendedora]) {
+    const lista = await call("GET", "/offers", { token: parte.token });
+    assert.ok(lista.body.some((o) => o.id === aceita.body.id));
+    const uma = await call("GET", `/offers/${aceita.body.id}`, { token: parte.token });
+    assert.equal(uma.status, 200);
+    assert.equal(uma.body.status, "ACCEPTED");
+    assert.equal(uma.body.product_title, "Chrono Trigger");
+    assert.equal(uma.body.product_price, 300);
+    assert.equal(uma.body.product_removed, true);
+    const msgs = await call("GET", `/messages?offer_id=${aceita.body.id}`, { token: parte.token });
+    assert.equal(msgs.status, 200);
+    assert.equal(msgs.body.length, msgsAntes);
+  }
+  // Quem não participa continua sem acesso.
+  assert.equal((await call("GET", `/offers/${aceita.body.id}`, { token: curioso.token })).status, 403);
+  // Chat segue somente leitura e a negociação aceita continua não excluível.
+  const nova = await call("POST", "/messages", { token: comprador.token, body: { offer_id: aceita.body.id, text: "Chegou?" } });
+  assert.equal(nova.status, 409);
+  const del = await call("DELETE", `/offers/${aceita.body.id}`, { token: comprador.token });
+  assert.equal(del.status, 409);
+});
+
+test("#18: remoção do anúncio pelo dono ou pelo admin também preserva a negociação ACCEPTED", async () => {
+  const vend = await signup("Vend18b");
+  const comp = await signup("Comp18b");
+  for (const quemRemove of ["dono", "admin"]) {
+    const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-gta6", price: 150 } });
+    const offer = await call("POST", "/offers", { token: comp.token, body: { product_id: prod.body.id, offered_price: 140 } });
+    await call("PATCH", `/offers/${offer.body.id}`, { token: vend.token, body: { status: "ACCEPTED" } });
+    const del =
+      quemRemove === "dono"
+        ? await call("DELETE", `/products/${prod.body.id}`, { token: vend.token })
+        : await call("DELETE", `/admin/products/${prod.body.id}`, { token: admin.token });
+    assert.equal(del.status, 200);
+    const salva = store.get("offers", offer.body.id);
+    assert.ok(salva, `negociação aceita sumiu (${quemRemove})`);
+    assert.equal(salva.product_removed, true);
+    assert.equal(salva.product_title, "GTA VI");
+    assert.ok(store.find("messages", (m) => m.offer_id === offer.body.id).length >= 1);
+  }
 });

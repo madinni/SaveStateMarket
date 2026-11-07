@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
 
 const CartContext = createContext(null);
 const CART_STORAGE_KEY = "savestate_market_cart";
@@ -18,6 +19,15 @@ export function CartProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
+
+  // Logout (manual ou por 401): o carrinho não passa para a próxima conta.
+  // O CartProvider fica dentro do AuthProvider (App.jsx), então enxerga o token.
+  const { token } = useAuth();
+  const hadToken = useRef(Boolean(token));
+  useEffect(() => {
+    if (hadToken.current && !token) setItems([]);
+    hadToken.current = Boolean(token);
+  }, [token]);
 
   const addItem = useCallback((product) => {
     setItems((currentItems) => {

@@ -12,6 +12,7 @@ export const useMessages = (offerId) =>
     enabled: Boolean(offerId),
   });
 
+// O cliente manda só { offer_id, text }; id, remetente e horário vêm do servidor.
 export const useSendMessage = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -37,13 +38,12 @@ export const useCreateOffer = () => {
   });
 };
 
-// Altera o estado da oferta. A nota do sistema e a notificação da outra parte
-// agora são feitas pelo servidor (systemMessage e notification são ignorados).
+// Altera o estado da oferta: data = { status, offered_price? }. A nota do sistema no chat,
+// last_action_by e a notificação da outra parte são feitas pelo servidor.
 export const useUpdateOffer = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }) =>
-      offersApi.update(id, { status: patch.status, offered_price: patch.offered_price }),
+    mutationFn: ({ id, data }) => offersApi.update(id, data),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["offers"] });
       queryClient.invalidateQueries({ queryKey: ["messages", updated.id] });

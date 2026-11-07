@@ -1,5 +1,6 @@
 // Rotas dos recursos. Em todas: 401 sem token, 404 id inexistente, 403 registro de outra
 // pessoa (nessa ordem: 404 antes de 403). O dono sempre vem do token, nunca do corpo.
+import crypto from "node:crypto";
 import { Router } from "express";
 import * as store from "./store.js";
 import { exigeJwt, jwtOpcional, isBlocked } from "./auth.js";
@@ -8,6 +9,7 @@ import { notify } from "./notify.js";
 import { triggerAlerts, checkExistingListings, normalize } from "./alerts.js";
 import { createDemoPixPayload } from "./pix.js";
 import * as S from "./schemas.js";
+import { criarLimitador, ipDe } from "./rateLimit.js";
 
 const router = Router();
 
@@ -28,21 +30,44 @@ const handleOf = (user) => user.handle;
 const isSeller = (product, user) =>
   sameId(product.seller_id, user.id) || (!product.seller_id && product.seller_handle === user.handle);
 
-// Exportada: o admin também remove anúncios (DELETE /admin/products/:id).
+// Exportada: o admin também remove anúncios (DELETE /admin/products/:id) e a venda aprovada
+// também tira o anúncio do catálogo. Negociações ACCEPTED são histórico da transação (#18):
+// ficam, com as mensagens, e ganham um retrato do anúncio (product_title, product_price,
+// product_removed). As demais negociações e suas mensagens são apagadas.
 export function removeProductCascade(productId) {
-  const offerIds = store.find("offers", (o) => sameId(o.product_id, productId)).map((o) => String(o.id));
-  store.removeWhere("messages", (m) => offerIds.includes(String(m.offer_id)));
-  store.removeWhere("offers", (o) => offerIds.includes(String(o.id)));
+  const product = store.get("products", productId);
+  const offers = store.find("offers", (o) => sameId(o.product_id, productId));
+  const removidas = offers.filter((o) => o.status !== "ACCEPTED").map((o) => String(o.id));
+  for (const offer of offers.filter((o) => o.status === "ACCEPTED")) {
+    store.update("offers", offer.id, {
+      product_title: offer.product_title ?? product?.title ?? "Anúncio removido",
+      product_price: offer.product_price ?? (product ? Number(product.price) : (offer.original_price ?? null)),
+      product_platform: offer.product_platform ?? product?.platform ?? null,
+      product_image_url: offer.product_image_url ?? product?.image_url ?? null,
+      product_removed: true,
+      product_removed_at: now(),
+    });
+  }
+  store.removeWhere("messages", (m) => removidas.includes(String(m.offer_id)));
+  store.removeWhere("offers", (o) => removidas.includes(String(o.id)));
   return store.remove("products", productId);
 }
 
+// #30: título e plataforma vêm SEMPRE do catálogo (games). O POST exige game_id (o schema
+// já não aceita title/platform livres); no PATCH sem game_id o jogo atual é mantido.
 function productFromBody(body, current = {}) {
-  const game = body.game_id ? store.get("games", body.game_id) : null;
-  if (body.game_id && !game) fail(400, "Jogo não encontrado no catálogo.", "game_id");
-  const title = game?.title ?? body.title ?? current.title;
-  const platform = game?.platform ?? body.platform ?? current.platform;
-  if (!title) fail(400, "Selecione um jogo do catálogo.", "game_id");
-  return { ...body, title, platform, image_url: body.image_url || current.image_url || game?.cover_url };
+  if (!body.game_id) {
+    if (!current.id) fail(400, "Selecione um jogo do catálogo.", "game_id");
+    return { ...body, image_url: body.image_url || current.image_url };
+  }
+  const game = store.get("games", body.game_id);
+  if (!game) fail(400, "Jogo não encontrado no catálogo.", "game_id");
+  return {
+    ...body,
+    title: game.title,
+    platform: game.platform,
+    image_url: body.image_url || current.image_url || game.cover_url,
+  };
 }
 
 router.get("/products", (req, res) => res.json(applyQuery(store.list("products"), req.query)));
@@ -296,28 +321,92 @@ router.patch("/messages/:id", exigeJwt, immutable);
 router.delete("/messages/:id", exigeJwt, immutable);
 
 // ---------------------------------------------------------------- Tickets de suporte
+// Código de consulta do visitante: 8 caracteres de um alfabeto sem 0/O/1/I (fácil de digitar).
+// 32 símbolos dividem 256 exatamente, então "byte % 32" não tem viés.
+const ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function gerarCodigoConsulta(tamanho = 8) {
+  return Array.from(crypto.randomBytes(tamanho), (b) => ALFABETO_CODIGO[b % ALFABETO_CODIGO.length]).join("");
+}
+const hashCodigo = (codigo) => crypto.createHash("sha256").update(String(codigo).toUpperCase()).digest("hex");
+// Comparação em tempo constante (os dois lados são hashes sha256 de 32 bytes).
+function codigoConfere(codigo, hashGuardado) {
+  const a = Buffer.from(hashCodigo(codigo), "hex");
+  const b = Buffer.from(String(hashGuardado), "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// O hash do código nunca sai da API (nem para o admin). Exportada para admin.js.
+export function semSegredoTicket(ticket) {
+  if (!ticket) return ticket;
+  const { access_code_hash, ...seguro } = ticket; // eslint-disable-line no-unused-vars
+  return seguro;
+}
+
+// Limite de consultas por IP (em memória), no estilo do login: 10 tentativas a cada 15 minutos.
+// Conta toda tentativa (certa ou errada) antes de comparar o código.
+const CONSULTA_MAX = 10;
+const CONSULTA_JANELA_MS = 15 * 60 * 1000;
+const consultasTicket = new Map(); // ip → { count, inicio }
+
+function consultaAtiva(chave, agora = Date.now()) {
+  const registro = consultasTicket.get(chave);
+  if (registro && agora - registro.inicio >= CONSULTA_JANELA_MS) {
+    consultasTicket.delete(chave);
+    return null;
+  }
+  return registro || null;
+}
+const consultaBloqueada = (chave) => (consultaAtiva(chave)?.count ?? 0) >= CONSULTA_MAX;
+function registrarConsulta(chave) {
+  const agora = Date.now();
+  const registro = consultaAtiva(chave, agora);
+  if (registro) registro.count += 1;
+  else consultasTicket.set(chave, { count: 1, inicio: agora });
+  if (consultasTicket.size > 10000) {
+    for (const [k, r] of consultasTicket) if (agora - r.inicio >= CONSULTA_JANELA_MS) consultasTicket.delete(k);
+  }
+}
+// Usado pelos testes para não deixar o limitador vazar entre cenários.
+export function resetConsultaTicketLimiter() {
+  consultasTicket.clear();
+}
+
 const ticketOwner = (ticket, user) =>
   sameId(ticket.author_id, user.id) || (!ticket.author_id && ticket.author_handle === user.handle);
 
 router.get("/tickets", exigeJwt, (req, res) => {
   const mine = store.find("tickets", (t) => ticketOwner(t, req.user));
   const { author_id, ...query } = req.query; // eslint-disable-line no-unused-vars
-  res.json(applyQuery(mine, query));
+  res.json(applyQuery(mine, query).map(semSegredoTicket));
 });
 
 router.get("/tickets/:id", exigeJwt, (req, res) => {
   const ticket = exigeItem("tickets", req.params.id, "Ticket");
   exigeDono(ticketOwner(ticket, req.user));
-  res.json(ticket);
+  res.json(semSegredoTicket(ticket));
 });
 
 // Visitantes também podem abrir ticket (como antes); logado, o dono vem do token.
+// Visitante recebe UMA vez, na resposta 201, o código de consulta (access_code) para
+// acompanhar a resposta em POST /tickets/consulta. Só o hash sha256 fica gravado.
+// #27: visitante (sem token) abre no máximo 5 tickets por hora por IP. Conta antes da
+// validação e da escrita no db.json. Quem está logado não entra neste limite.
+const ticketsVisitante = criarLimitador({ max: 5, janelaMs: 60 * 60 * 1000 });
+
 router.post("/tickets", jwtOpcional, (req, res) => {
+  if (!req.user) {
+    const ip = ipDe(req);
+    if (ticketsVisitante.bloqueado(ip)) {
+      fail(429, "Muitos tickets enviados a partir desta rede. Tente novamente mais tarde.");
+    }
+    ticketsVisitante.hit(ip);
+  }
   const body = parse(S.ticketSchema, req.body);
   // Visitante precisa deixar um e-mail para receber a resposta; logado, o contato é a conta.
   if (!req.user && !body.contact_email) {
     fail(400, "Informe um e-mail de contato para receber a resposta.", "contact_email");
   }
+  const access_code = req.user ? null : gerarCodigoConsulta();
   const created = store.insert("tickets", {
     ...body,
     id: store.newId("TCK-").toUpperCase(),
@@ -325,8 +414,31 @@ router.post("/tickets", jwtOpcional, (req, res) => {
     author_handle: req.user ? handleOf(req.user) : "@Visitante_Anonimo",
     status: "OPEN",
     created_at: now(),
+    ...(access_code ? { access_code_hash: hashCodigo(access_code) } : {}),
   });
-  res.status(201).json(created);
+  const resposta = semSegredoTicket(created);
+  res.status(201).json(access_code ? { ...resposta, access_code } : resposta);
+});
+
+// Consulta pública do ticket de visitante: { id, codigo }. Ticket inexistente e código errado
+// dão a mesma resposta (404), para não revelar quais tickets existem. Limite por IP (429).
+const CONSULTA_FALHA = "Ticket não encontrado ou código inválido.";
+const CAMPOS_CONSULTA = [
+  "id", "subject", "category", "priority", "status", "admin_reply", "replied_at", "created_at", "updated_at",
+];
+
+router.post("/tickets/consulta", (req, res) => {
+  const chave = req.ip || req.socket?.remoteAddress || "?";
+  if (consultaBloqueada(chave)) fail(429, "Muitas consultas de ticket. Tente novamente em alguns minutos.");
+  registrarConsulta(chave);
+
+  const { id, codigo } = parse(S.ticketConsultaSchema, req.body);
+  const ticket = store.get("tickets", id);
+  if (!ticket?.access_code_hash || !codigoConfere(codigo, ticket.access_code_hash)) fail(404, CONSULTA_FALHA);
+
+  const publico = {};
+  for (const campo of CAMPOS_CONSULTA) if (ticket[campo] !== undefined) publico[campo] = ticket[campo];
+  res.json(publico);
 });
 
 router.patch("/tickets/:id", exigeJwt, (req, res) => {
@@ -334,7 +446,7 @@ router.patch("/tickets/:id", exigeJwt, (req, res) => {
   exigeDono(ticketOwner(ticket, req.user));
   if (ticket.status !== "OPEN") fail(409, "Só tickets em aberto podem ser alterados.");
   const body = parse(S.ticketUpdateSchema, req.body);
-  res.json(store.update("tickets", ticket.id, { ...body, updated_at: now() }));
+  res.json(semSegredoTicket(store.update("tickets", ticket.id, { ...body, updated_at: now() })));
 });
 
 router.delete("/tickets/:id", exigeJwt, (req, res) => {

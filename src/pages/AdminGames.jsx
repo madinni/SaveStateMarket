@@ -110,7 +110,7 @@ export default function AdminGames() {
   );
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header
         title="NULL"
         titleHighlight="CATALOG"

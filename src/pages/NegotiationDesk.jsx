@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
@@ -13,8 +13,6 @@ import {
   useDeleteOffer,
 } from "../hooks/useOffers";
 import { chatSchema, priceSchema } from "../schemas";
-
-const newId = (prefix) => `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 
 const BADGES = {
   ACCEPTED: ["[ACEITO]", "text-neon-mint bg-neon-mint/10 border-neon-mint"],
@@ -61,23 +59,10 @@ export default function NegotiationDesk() {
   const isBlockedBuyer = user.account_status === "refund_pending" && selectedOffer?.buyer_id === user.id;
   const canAccept = isProfileSynced && !isClosed && !isMyLastAction && !isBlockedBuyer; // impede o auto-aceite e compras bloqueadas
 
-  // A outra parte da negociação é quem recebe a notificação.
-  const otherPartyId =
-    selectedOffer && (selectedOffer.buyer_id === user.id ? selectedOffer.seller_id : selectedOffer.buyer_id);
-
-  const buildNotification = (status, newPrice) => {
-    const product = `"${selectedOffer.product_title}"`;
-    const titles = {
-      ACCEPTED: ["Proposta aceita", `${user.handle} aceitou a proposta em ${product}.`],
-      REJECTED: ["Proposta recusada", `${user.handle} recusou a proposta em ${product}.`],
-      COUNTER_OFFER: [
-        "Nova contraproposta",
-        `${user.handle} propôs R$ ${Number(newPrice).toFixed(2)} em ${product}.`,
-      ],
-    };
-    const [title, body] = titles[status];
-    return { user_id: otherPartyId, type: "OFFER", title, body, link: "/offers" };
-  };
+  // Anúncio removido ou vendido: a negociação aceita continua como histórico (o servidor marca
+  // product_removed e guarda um retrato do anúncio). A tela não depende do /products/:id.
+  const productRemoved = Boolean(selectedOffer?.product_removed);
+  const listedPrice = selectedOffer?.original_price ?? selectedOffer?.product_price;
 
   const handleDeleteChat = async () => {
     if (!selectedOffer) return;
@@ -95,14 +80,8 @@ export default function NegotiationDesk() {
     if (!isProfileSynced || !selectedOffer || isClosed) return;
     setActionError("");
     try {
-      await sendMessage.mutateAsync({
-        id: newId("MSG"),
-        offer_id: selectedOffer.id,
-        sender_id: user.id,
-        sender_handle: user.handle,
-        text,
-        timestamp: new Date().toISOString(),
-      });
+      // Id, remetente e horário são definidos pelo servidor a partir do token.
+      await sendMessage.mutateAsync({ offer_id: selectedOffer.id, text });
       chatForm.reset();
     } catch (err) {
       setActionError(err.message || "Não foi possível enviar a mensagem.");
@@ -117,28 +96,12 @@ export default function NegotiationDesk() {
     }
     setActionError("");
 
-    const note = newPrice
-      ? `[SISTEMA]: Contraproposta enviada no valor de R$ ${Number(newPrice).toFixed(2)}`
-      : `[SISTEMA]: Proposta ${status === "ACCEPTED" ? "ACEITA" : "RECUSADA"} por ${user.handle}`;
-
+    // O cliente manda só o novo estado (e o valor, na contraproposta). Quem agiu, a mensagem
+    // do sistema no chat e a notificação da outra parte ficam com o servidor.
     try {
       await updateOffer.mutateAsync({
         id: selectedOffer.id,
-        notification: buildNotification(status, newPrice),
-        patch: {
-          status,
-          last_action_by: user.id,
-          updated_at: new Date().toISOString(),
-          ...(newPrice ? { offered_price: Number(newPrice) } : {}),
-        },
-        systemMessage: {
-          id: newId("SYS"),
-          offer_id: selectedOffer.id,
-          sender_id: "SYSTEM",
-          sender_handle: "PROTOCOL_BOT",
-          text: note,
-          timestamp: new Date().toISOString(),
-        },
+        data: { status, ...(newPrice ? { offered_price: Number(newPrice) } : {}) },
       });
       setShowCounterModal(false);
       counterForm.reset();
@@ -153,7 +116,7 @@ export default function NegotiationDesk() {
     }`;
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header
         title="NEGOTIATION"
         titleHighlight="DESK"
@@ -200,9 +163,12 @@ export default function NegotiationDesk() {
                       }`}
                     >
                       <div className="flex justify-between items-start mb-1">
-                        <span className="text-xs font-black text-slate-100 truncate max-w-[140px]">{off.product_title}</span>
+                        <span className="text-xs font-black text-slate-100 truncate max-w-[140px]">{off.product_title || "Anúncio removido"}</span>
                         <StatusBadge status={off.status} />
                       </div>
+                      {off.product_removed && (
+                        <span className="text-[11px] text-neon-amber">ANÚNCIO ENCERRADO</span>
+                      )}
                       <div className="text-[11px] text-slate-400 flex justify-between items-center mt-2">
                         <span>OFERTA: <strong className="text-neon-mint">R$ {off.offered_price}</strong></span>
                         <span className="text-[9px] text-slate-500">{off.buyer_handle}</span>
@@ -218,12 +184,21 @@ export default function NegotiationDesk() {
                 <>
                   <div className="border-b border-slate-700 pb-3 mb-3 flex flex-wrap justify-between items-center gap-2">
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-sm font-extrabold text-white">{selectedOffer.product_title}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-extrabold text-white">{selectedOffer.product_title || "Anúncio removido"}</h3>
                         <StatusBadge status={selectedOffer.status} />
+                        {productRemoved ? (
+                          <span className="border px-2 py-0.5 text-[11px] font-bold text-neon-amber border-neon-amber">[ANÚNCIO ENCERRADO]</span>
+                        ) : (
+                          selectedOffer.product_id && (
+                            <Link to={`/product/${selectedOffer.product_id}`} className="text-[11px] text-neon-cyan underline hover:text-white">
+                              ver anúncio
+                            </Link>
+                          )
+                        )}
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        VALOR DE ANÚNCIO: <span className="line-through text-slate-500">R$ {selectedOffer.original_price}</span>{" "}
+                        VALOR DE ANÚNCIO: <span className="line-through text-slate-500">R$ {listedPrice ?? "—"}</span>{" "}
                         | PROPOSTA: <strong className="text-neon-cyan">R$ {selectedOffer.offered_price}</strong>
                       </p>
                     </div>
@@ -251,6 +226,12 @@ export default function NegotiationDesk() {
                       )}
                     </div>
                   </div>
+
+                  {productRemoved && (
+                    <div className="mb-2 bg-noir-950 border border-neon-amber/60 px-3 py-1 text-[11px] text-neon-amber">
+                      ℹ O anúncio desta negociação foi vendido ou removido. O histórico da conversa continua disponível.
+                    </div>
+                  )}
 
                   {isMyLastAction && !isClosed && (
                     <div className="mb-2 bg-noir-950 border border-neon-cyan/50 px-3 py-1 text-[11px] text-neon-cyan">

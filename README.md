@@ -161,15 +161,15 @@ Rotas marcadas com 🔒 exigem o cabeçalho `Authorization: Bearer <token>`. As 
 
 | Recurso | Endpoints |
 | :--- | :--- |
-| **Autenticação** | `POST /usuarios` (cadastro) · `POST /login` (após 5 falhas em 15 min para o mesmo IP + e-mail responde `429`) · 🔒 `GET/PATCH /usuarios/me` |
+| **Autenticação** | `POST /usuarios` (cadastro; senha de 8 a 72 bytes; 10 cadastros por IP por hora, depois `429`) · `POST /login` (após 5 falhas em 15 min para o mesmo IP + e-mail, ou 20 falhas do mesmo IP em qualquer e-mail, responde `429`) · 🔒 `GET/PATCH /usuarios/me` (`avatar_url` só `http(s)` ou `data:image/png\|jpeg\|webp\|gif;base64`, até 1,5 MB) · 🔒 `PATCH /usuarios/me/senha` (`{ current_password, new_password }`, nova com 8 a 72 bytes e diferente da atual; senha atual errada → `400` com `field: "current_password"`; 5 tentativas por usuário em 15 min, depois `429`; responde `{ message, token }` e **revoga todos os tokens anteriores**) |
 | **Perfis públicos** | `GET /usuarios` · `GET /profiles` · `GET /profiles/:id` · 🔒 `PATCH /profiles/:id` (só o próprio) |
-| **Anúncios** | `GET /products` · `GET /products/:id` · 🔒 `POST /products` · 🔒 `PATCH/DELETE /products/:id` (só o anunciante) |
+| **Anúncios** | `GET /products` · `GET /products/:id` · 🔒 `POST /products` (`game_id` do catálogo obrigatório; título e plataforma vêm do jogo; `image_url` com a mesma regra do `avatar_url`) · 🔒 `PATCH/DELETE /products/:id` (só o anunciante; `PATCH` sem `game_id` mantém o jogo) |
 | **Catálogo de jogos** | `GET /games` · `GET /games/:id` (somente leitura) |
 | **Referência de preço** | `GET/POST /price_references` · `PATCH /price_references/:id` |
 | **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` (só com pedido `approved` entre as partes; senão `403`) |
-| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` (`DELETE` de negociação `ACCEPTED` responde `409`) |
+| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` (`DELETE` de negociação `ACCEPTED` responde `409`). Quando o anúncio sai do catálogo (venda, exclusão pelo dono ou pelo admin), as negociações `ACCEPTED` e suas mensagens são preservadas com `product_title`, `product_price` e `product_removed: true`; as demais são apagadas. |
 | **Mensagens** | 🔒 `GET/POST /messages` |
-| **Tickets** | `POST /tickets` (visitantes também, com `contact_email` obrigatório) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
+| **Tickets** | `POST /tickets` (visitantes também, com `contact_email` obrigatório; o visitante recebe uma única vez `access_code` na resposta `201`; visitante: 5 tickets por IP por hora, depois `429`) · `POST /tickets/consulta` (`{ id, codigo }` → `200` com `id`, `subject`, `category`, `priority`, `status`, `admin_reply`, `replied_at`, `created_at`, `updated_at`; ticket inexistente ou código errado → `404`; 10 tentativas por IP em 15 min, depois `429`) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
 | **Notificações** | 🔒 `GET /notifications` · 🔒 `PATCH/DELETE /notifications/:id` |
 | **Alertas de preço** | 🔒 `GET/POST /price_alerts` · 🔒 `PATCH/DELETE /price_alerts/:id` |
 | **Pedidos** | 🔒 `GET/POST /orders` · 🔒 `GET/PATCH /orders/:id` |
@@ -179,9 +179,11 @@ Rotas marcadas com 🔒 exigem o cabeçalho `Authorization: Bearer <token>`. As 
 
 As rotas `/admin/*` exigem um usuário com `role: "admin"`: sem token respondem `401` e, para usuários comuns, `403` ("Acesso restrito ao administrador."). O papel nunca é definido pelo cliente.
 
-> ⚠️ **Conta de administrador de demonstração.** Ao subir, a API cria (se ainda não existir) o administrador com e-mail `admin` e senha `admin`. Essa credencial é fraca e pública: serve **só** para a demonstração acadêmica e nunca deve ir para um ambiente real.
+> ⚠️ **Conta de administrador.** Ao subir, a API cria (se ainda não existir nenhum admin) o administrador com login `admin` e senha `admin`. É uma credencial fraca e pública, só para a demonstração acadêmica (decisão ainda pendente com o grupo). A senha pode ser trocada em `PATCH /usuarios/me/senha`.
 
-Respostas de erro seguem o padrão `{ "message": "...", "field": "..." }`, com `400` (dados inválidos), `401` (sem token ou token inválido), `403` (registro de outra pessoa), `404` (não encontrado), `409` (conflito) e `429` (muitas tentativas de login).
+Respostas de erro seguem o padrão `{ "message": "...", "field": "..." }`, com `400` (dados inválidos), `401` (sem token, token inválido ou emitido antes da última troca de senha), `403` (registro de outra pessoa), `404` (não encontrado), `409` (conflito), `413` (corpo grande demais: 100 KB em geral, 2 MB nas rotas com imagem) e `429` (limite de tentativas: login, troca de senha, cadastro, ticket de visitante ou consulta de ticket).
+
+A API desativa o `X-Powered-By` e usa o `helmet` (CSP `default-src 'none'`). O build do front (`npm run build`) injeta uma CSP no `index.html` (plugin em `vite.config.js`); se mudar a `API_URL` ou chamar outra API externa, atualize a lista de origens lá.
 
 ---
 

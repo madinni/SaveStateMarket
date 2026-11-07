@@ -37,3 +37,78 @@
 .glow-mint {
   box-shadow: 0 0 15px rgba(5, 255, 161, 0.25);
 }
+/* Toasts (react-toastify) no tema neon. ":root:root" ganha das variáveis padrão que a lib injeta. */
+:root:root {
+  --toastify-color-dark: #0e0b1a;          /* noir-900 */
+  --toastify-text-color-dark: #e2e8f0;     /* slate-200 */
+  --toastify-color-info: #00f0ff;          /* neon-cyan */
+  --toastify-color-success: #05ffa1;       /* neon-mint */
+  --toastify-color-warning: #ffbe0b;       /* neon-amber */
+  --toastify-color-error: #ff0055;         /* neon-pink */
+  --toastify-color-progress-dark: #ff0055;
+  --toastify-font-family: "JetBrains Mono", monospace;
+  --toastify-toast-bd-radius: 0;
+  --toastify-toast-min-height: 52px;
+  --toastify-toast-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+}
+
+.Toastify__toast {
+  font-size: 0.75rem;
+  border: 1px solid #261c47;               /* noir-700 */
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.Toastify__toast--success { border-color: rgba(5, 255, 161, 0.6); }
+.Toastify__toast--error { border-color: rgba(255, 0, 85, 0.6); }
+.Toastify__toast--warning { border-color: rgba(255, 190, 11, 0.6); }
+.Toastify__toast--info { border-color: rgba(0, 240, 255, 0.6); }
+
+/* Medidas da moldura fixa (Header sticky no topo, Navbar fixa embaixo), com folga.
+   Celular: barra de ~58px + o botão +VENDER que sobe 20px (-mt-5) = ~78px.
+   Tablet (md): dock de ~70px contando o bottom-4. Header: ~68px (celular) / ~74px (md).
+   Desktop (lg+): sem barra inferior; a navegação vai para uma 2ª linha do Header (~41px),
+   então o Header fica com ~115px e o espaço inferior vira só uma margem (pb-nav = 2rem). */
+:root {
+  --header-h: 4.25rem;
+  --nav-space: 5rem;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --header-h: 4.75rem;
+    --nav-space: 4.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --header-h: 7.25rem;
+    --nav-space: 0.5rem;
+  }
+}
+
+/* Espaço inferior único das páginas, para nenhum conteúdo ficar atrás da Navbar. */
+.pb-nav {
+  padding-bottom: calc(var(--nav-space) + 1.5rem);
+}
+
+/* Painel lateral fixo (lg+): fica abaixo do Header (no lg+ não há barra inferior) e rola por dentro se não couber. */
+@media (min-width: 1024px) {
+  .sticky-panel {
+    position: sticky;
+    top: calc(var(--header-h) + 1rem);
+    max-height: calc(100vh - var(--header-h) - 2rem);
+    max-height: calc(100dvh - var(--header-h) - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #3d2b6b transparent; /* noir-600 */
+  }
+}
+
+/* Navbar: no tablet (md até lg) vira um "dock" flutuante com cantos cortados (as utilitárias acima não aceitam md:). */
+@media (min-width: 768px) {
+  .nav-dock {
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+  }
+}

@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as store from "./store.js";
 import { exigeJwt, exigeAdmin } from "./auth.js";
 import { fail, parse, sameId, now } from "./http.js";
+import { urlSegura } from "./schemas.js";
 
 const router = Router();
 
@@ -13,11 +14,8 @@ const router = Router();
 // Mantenha esta lista igual à PLATFORMS de src/schemas/index.js.
 const PLATFORMS = ["SNES (CART)", "N64 (CART)", "PS1 (DISC)", "PS2 (DISC)", "XBOX 360", "SWITCH (CART)"];
 
-const coverUrl = z
-  .string()
-  .trim()
-  .max(2_000_000, "Imagem muito grande.")
-  .refine((v) => v === "" || /^(https?:\/\/|data:image\/)/i.test(v), "A capa deve ser uma URL http(s) ou uma imagem.");
+// #28: mesma validação de avatar_url/image_url (http(s) ou data URL de imagem raster).
+const coverUrl = urlSegura("A capa");
 
 const gameSchema = z.object({
   title: z

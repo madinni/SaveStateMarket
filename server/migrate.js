@@ -3,23 +3,26 @@
 // - perfis sem account_status ficam "active";
 // - alertas antigos (por anúncio) passam a ser alertas por título;
 // - reembolsos antigos "paid" (que já desbloqueavam a conta) passam a "released";
-// - garante a conta inicial do administrador (garantirAdmin).
+// - garante a conta inicial do administrador (garantirAdmin): login "admin" / senha "admin" (demo).
 // Tudo é idempotente: rodar de novo não altera nada.
 import bcrypt from "bcryptjs";
 import * as store from "./store.js";
 import { now } from "./http.js";
 
-// Credencial de DEMONSTRAÇÃO (admin/admin). Nunca use em ambiente real.
 const ADMIN_EMAIL = "admin";
-const ADMIN_SENHA = "admin";
+// Credencial de DEMONSTRAÇÃO (login "admin" / senha "admin"), fraca e pública, só para a
+// apresentação acadêmica. Decisão pendente com o grupo; a senha pode ser trocada depois em
+// PATCH /usuarios/me/senha.
+const ADMIN_SENHA_DEMO = "admin";
 
-// Cria o perfil do administrador se ainda não houver nenhum com role "admin".
+// Cria o perfil do administrador (senha "admin") se ainda não houver nenhum com role "admin".
 // Devolve true quando criou/ajustou algo. O cliente nunca define role (só este código).
+// Se já existe admin, não mexe em nada (nem na senha).
 export async function garantirAdmin() {
   const profiles = store.list("profiles");
   if (profiles.some((p) => p.role === "admin")) return false;
 
-  const password_hash = await bcrypt.hash(ADMIN_SENHA, 10);
+  const password_hash = await bcrypt.hash(ADMIN_SENHA_DEMO, 10);
   // O e-mail "admin" não passa no cadastro (exige formato de e-mail); se existir, é reservado.
   const reservado = profiles.find((p) => String(p.email).toLowerCase() === ADMIN_EMAIL);
   if (reservado) {

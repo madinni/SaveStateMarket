@@ -29,3 +29,14 @@ export const useUpdateMe = () => {
     },
   });
 };
+
+// PATCH /usuarios/me/senha. A senha atual errada volta como 400 com field "current_password";
+// excesso de tentativas, 429. A troca revoga os tokens antigos e a API devolve um token novo,
+// que fica gravado para a sessão atual continuar.
+export const useChangePassword = () => {
+  const { replaceToken } = useAuth();
+  return useMutation({
+    mutationFn: authApi.changePassword,
+    onSuccess: (result) => replaceToken(result?.token),
+  });
+};

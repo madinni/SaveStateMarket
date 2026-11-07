@@ -182,7 +182,7 @@ export default function ProductDetails() {
     `border text-[10px] px-2 py-1 font-bold bg-noir-950 ${active ? onClass : "border-slate-800 text-slate-500"}`;
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header title="ASSET" titleHighlight="DOSSIER" subtitle="IDENTIFICAÇÃO DE MÍDIA // DOSSIÊ TÉCNICO" backLink="/" backText="<< FEED" />
 
       <main className="max-w-2xl mx-auto px-4 pt-4 space-y-4">

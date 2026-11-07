@@ -130,7 +130,7 @@ export default function Checkout() {
 
   if (!user) {
     return (
-      <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+      <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
         <Header title="PIX" titleHighlight="CHECKOUT" subtitle="AUTENTICAÇÃO NECESSÁRIA" backLink="/" backText="<< FEED" />
         <main className="max-w-md mx-auto px-4 pt-6 text-center space-y-4">
           <p className="text-xs text-slate-300">Entre na sua conta para continuar com o pagamento.</p>
@@ -141,7 +141,7 @@ export default function Checkout() {
   }
 
   return (
-    <div className="min-h-screen pb-28 text-slate-100 bg-noir-950 font-code">
+    <div className="min-h-screen pb-nav text-slate-100 bg-noir-950 font-code">
       <Header title="PIX" titleHighlight="CHECKOUT" subtitle="FINALIZAÇÃO DE PEDIDO // AMBIENTE DEMONSTRATIVO" backLink="/" backText="<< FEED" />
 
       <main className="max-w-xl mx-auto px-4 pt-5 space-y-4">

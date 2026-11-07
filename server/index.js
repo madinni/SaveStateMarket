@@ -12,7 +12,13 @@ if (problema) {
   process.exit(1);
 }
 
-await migrate();
+try {
+  await migrate();
+} catch (error) {
+  // Qualquer falha na migração do db.json impede a API de subir, com mensagem clara.
+  console.error(`Não foi possível subir a API: ${error.message}`);
+  process.exit(1);
+}
 
 createApp().listen(PORT, (error) => {
   // No Express 5 o erro de listen (ex.: porta ocupada) chega neste callback.
