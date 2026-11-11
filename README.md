@@ -48,7 +48,7 @@ O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicaç�
 
 ```
 SaveStateMarket/
-├── env                     # Modelo das variáveis de ambiente (copiar para .env)
+├── .env.example            # Modelo das variáveis de ambiente (copiar para .env)
 ├── db.json                 # Dados legados, importados uma única vez para o PostgreSQL
 ├── index.html              # Ponto de entrada HTML do Vite
 ├── package.json            # Dependências e scripts
@@ -103,14 +103,14 @@ npm install
 ```
 
 ### 3. Configurar as variáveis de ambiente
-Crie um arquivo `.env` na raiz do projeto a partir do modelo `env`:
+Crie um arquivo `.env` na raiz do projeto a partir do modelo `.env.example`:
 
 ```bash
 # Linux / macOS / Git Bash
-cp env .env
+cp .env.example .env
 
 # Windows (PowerShell)
-Copy-Item env .env
+Copy-Item .env.example .env
 ```
 
 Configure `DATABASE_URL` no `.env` com a URL de conexão do PostgreSQL e defina um valor próprio para `SEGREDO` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar o segredo:
