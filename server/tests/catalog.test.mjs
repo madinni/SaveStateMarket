@@ -1,4 +1,4 @@
-// Testes de integração: catálogo (UC13) e referência de preço (UC03). Usam um db temporário.
+// Testes de integração: catálogo (UC13) e referência de preço (UC03), em schema PostgreSQL isolado.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -7,6 +7,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "savestate-catalog-"));
+if (!process.env.TEST_DATABASE_URL) throw new Error("Defina TEST_DATABASE_URL para executar os testes com PostgreSQL.");
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+process.env.DB_SCHEMA = `savestate_test_catalog_${process.pid}`;
+process.env.NODE_ENV = "test";
 process.env.DB_PATH = path.join(tmp, "db.json");
 process.env.SEGREDO = crypto.randomBytes(48).toString("hex");
 
@@ -34,6 +38,7 @@ async function call(method, url, { token, body } = {}) {
 }
 
 before(async () => {
+  await store.initialize();
   // O servidor usa o fetch global para falar com a CheapShark: aqui ele é trocado por um stub.
   globalThis.fetch = async (url) => {
     const target = String(url);
@@ -46,7 +51,7 @@ before(async () => {
   };
 
   const hash = await bcrypt.hash("senha-teste", 4);
-  store.reset({
+  await (store.reset({
     profiles: [
       { id: "u-admin", handle: "@adm", email: "adm@teste.io", password_hash: hash, role: "admin", account_status: "active" },
       { id: "u-user", handle: "@user", email: "user@teste.io", password_hash: hash, account_status: "active" },
@@ -60,7 +65,7 @@ before(async () => {
     products: [
       { id: "prod-halo", game_id: "game-004", title: "Halo 3", platform: "XBOX 360", price: 50, seller_id: "u-user" },
     ],
-  });
+  }));
 
   await new Promise((resolve) => {
     server = createApp().listen(0, resolve);
@@ -71,10 +76,13 @@ before(async () => {
   userToken = (await call("POST", "/login", { body: { email: "user@teste.io", password: "senha-teste" } })).body.token;
 });
 
-after(() => {
+after(async () => {
   globalThis.fetch = realFetch;
-  server.closeAllConnections?.();
-  server.close();
+  if (server) {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+  await store.close({ dropSchema: true });
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -109,7 +117,7 @@ test("UC13: admin cria jogo; duplicado, plataforma inválida e capa insegura sã
 
 test("UC13: PATCH renomeia o jogo e atualiza os anúncios ligados a ele", async () => {
   const game = (await call("POST", "/games", { token: adminToken, body: { title: "Jogo Antigo", platform: "PS2 (DISC)" } })).body;
-  store.insert("products", { id: "prod-antigo", game_id: game.id, title: "Jogo Antigo", platform: "PS2 (DISC)", price: 10, seller_id: "u-user" });
+  await (store.insert("products", { id: "prod-antigo", game_id: game.id, title: "Jogo Antigo", platform: "PS2 (DISC)", price: 10, seller_id: "u-user" }));
 
   const patched = await call("PATCH", `/games/${game.id}`, { token: adminToken, body: { title: "Jogo Novo" } });
   assert.equal(patched.status, 200);
@@ -126,7 +134,7 @@ test("UC13: DELETE é bloqueado (409) enquanto houver anúncio ligado ao jogo", 
   const blocked = await call("DELETE", "/games/game-004", { token: adminToken });
   assert.equal(blocked.status, 409);
 
-  store.remove("products", "prod-halo");
+  await (store.remove("products", "prod-halo"));
   const ok = await call("DELETE", "/games/game-004", { token: adminToken });
   assert.equal(ok.status, 200);
   assert.equal((await call("GET", "/games/game-004")).status, 404);

@@ -1,3 +1,4 @@
 SEGREDO=troque-por-um-segredo
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/savestate_market
 PORT=3001
 CORS_ORIGIN=http://localhost:5173

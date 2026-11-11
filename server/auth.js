@@ -79,10 +79,14 @@ export function configurePassport() {
         jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
         secretOrKey: SEGREDO(),
       },
-      (payload, done) => {
-        const user = store.get("profiles", payload.sub);
-        if (!user || tokenRevogado(payload, user)) return done(null, false);
-        done(null, user);
+      async (payload, done) => {
+        try {
+          const user = await store.get("profiles", payload.sub);
+          if (!user || tokenRevogado(payload, user)) return done(null, false);
+          done(null, user);
+        } catch (error) {
+          done(error);
+        }
       },
     ),
   );
@@ -124,7 +128,7 @@ export const isBlocked = (user) => user?.account_status === "refund_pending";
 const router = Router();
 
 // Cadastro: 201 sem a senha; 409 para e-mail ou handle repetido.
-// Limite por IP (#27): 10 cadastros por hora, contados antes do bcrypt e da escrita no disco.
+// Limite por IP (#27): 10 cadastros por hora, contados antes do bcrypt e da gravação no banco.
 router.post("/usuarios", async (req, res) => {
   const ip = ipDe(req);
   if (cadastroPorIp.bloqueado(ip)) fail(429, "Muitos cadastros a partir desta rede. Tente novamente mais tarde.");
@@ -132,7 +136,7 @@ router.post("/usuarios", async (req, res) => {
   const body = parse(registerSchema, req.body);
   const handle = body.handle.startsWith("@") ? body.handle : `@${body.handle}`;
 
-  const profiles = store.list("profiles");
+  const profiles = await store.list("profiles");
   if (profiles.some((p) => String(p.email).toLowerCase() === body.email)) {
     fail(409, "Este e-mail já está cadastrado.", "email");
   }
@@ -142,20 +146,31 @@ router.post("/usuarios", async (req, res) => {
 
   const password_hash = await bcrypt.hash(body.password, 10);
   // role nunca vem do cliente: perfis cadastrados aqui são sempre comuns.
-  const created = store.insert("profiles", {
-    id: crypto.randomUUID(),
-    handle,
-    email: body.email,
-    password_hash,
-    shipping_address: body.shipping_address,
-    account_status: "active",
-    reputation: 5,
-    total_transactions: 0,
-    success_rate: 100,
-    vault_balance: 0,
-    clearance_level: "LEVEL_3",
-    created_at: now(),
-  });
+  let created;
+  try {
+    created = await store.insert("profiles", {
+      id: crypto.randomUUID(),
+      handle,
+      email: body.email,
+      password_hash,
+      shipping_address: body.shipping_address,
+      account_status: "active",
+      reputation: 5,
+      total_transactions: 0,
+      success_rate: 100,
+      vault_balance: 0,
+      clearance_level: "LEVEL_3",
+      created_at: now(),
+    });
+  } catch (error) {
+    if (error.code === "23505" && error.constraint === "savestate_profiles_email_uq") {
+      fail(409, "Este e-mail já está cadastrado.", "email");
+    }
+    if (error.code === "23505" && error.constraint === "savestate_profiles_handle_uq") {
+      fail(409, "Este handle já está em uso.", "handle");
+    }
+    throw error;
+  }
   res.status(201).json(privateProfile(created));
 });
 
@@ -174,7 +189,7 @@ router.post("/login", async (req, res) => {
   loginPorEmail.hit(chave);
   loginPorIp.hit(ip);
 
-  const user = store.find("profiles", (p) => String(p.email).toLowerCase() === email)[0];
+  const user = (await store.find("profiles", (p) => String(p.email).toLowerCase() === email))[0];
   const ok = user ? await bcrypt.compare(password, String(user.password_hash || "")) : false;
   if (!ok) fail(401, "E-mail ou senha inválidos.");
   loginPorEmail.reset(chave);
@@ -190,9 +205,9 @@ router.get("/usuarios/me", exigeJwt, (req, res) => {
 
 // O usuário altera só avatar e endereço. account_status, reputação, saldo etc.
 // são decididos pelo servidor e são ignorados se vierem no corpo.
-function updateMe(req, res) {
+async function updateMe(req, res) {
   const body = parse(updateMeSchema, req.body);
-  const updated = store.update("profiles", req.user.id, body);
+  const updated = await store.update("profiles", req.user.id, body);
   res.json(privateProfile(updated));
 }
 router.patch("/usuarios/me", exigeJwt, updateMe);
@@ -211,15 +226,15 @@ router.patch("/usuarios/me/senha", exigeJwt, async (req, res) => {
   const ok = await bcrypt.compare(current_password, String(req.user.password_hash || ""));
   if (!ok) fail(400, "Senha atual incorreta.", "current_password");
   const password_hash = await bcrypt.hash(new_password, 10);
-  const user = store.update("profiles", req.user.id, { password_hash, password_changed_at: now() });
+  const user = await store.update("profiles", req.user.id, { password_hash, password_changed_at: now() });
   trocaSenha.reset(chave);
   res.json({ message: "Senha alterada com sucesso.", token: emitirToken(user) });
 });
 
 // Perfis públicos (sem e-mail, hash, endereço e status da conta).
-const listPublic = (req, res) => res.json(store.list("profiles").map(publicProfile));
-const getPublic = (req, res) => {
-  const profile = store.get("profiles", req.params.id);
+const listPublic = async (_req, res) => res.json((await store.list("profiles")).map(publicProfile));
+const getPublic = async (req, res) => {
+  const profile = await store.get("profiles", req.params.id);
   if (!profile) fail(404, "Operador não encontrado.");
   res.json(publicProfile(profile));
 };
@@ -228,10 +243,10 @@ router.get("/profiles", listPublic);
 router.get("/profiles/:id", getPublic);
 
 // Compatibilidade com o front antigo: PATCH /profiles/:id só vale para o próprio perfil.
-router.patch("/profiles/:id", exigeJwt, (req, res) => {
-  if (!store.get("profiles", req.params.id)) fail(404, "Operador não encontrado.");
+router.patch("/profiles/:id", exigeJwt, async (req, res) => {
+  if (!await store.get("profiles", req.params.id)) fail(404, "Operador não encontrado.");
   if (String(req.params.id) !== String(req.user.id)) fail(403, "Você só pode alterar o próprio perfil.");
-  updateMe(req, res);
+  await updateMe(req, res);
 });
 
 export default router;

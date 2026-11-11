@@ -1,4 +1,4 @@
-// Testes de integração (node --test). Usam um db temporário, nunca o db.json real.
+// Testes de integração (node --test). Usam schema PostgreSQL isolado e arquivo legado inexistente.
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -6,6 +6,10 @@ import os from "node:os";
 import path from "node:path";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "savestate-"));
+if (!process.env.TEST_DATABASE_URL) throw new Error("Defina TEST_DATABASE_URL para executar os testes com PostgreSQL.");
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+process.env.DB_SCHEMA = `savestate_test_api_${process.pid}`;
+process.env.NODE_ENV = "test";
 process.env.DB_PATH = path.join(tmp, "db.json");
 process.env.SEGREDO = "segredo-de-teste-com-pelo-menos-32-caracteres";
 
@@ -56,7 +60,8 @@ let bruno;
 let admin;
 
 before(async () => {
-  store.reset({
+  await store.initialize();
+  await store.reset({
     games: [
       { id: "game-gta6", title: "GTA VI", platform: "PS5 (DISC)" },
       { id: "game-002", title: "Chrono Trigger", platform: "SNES (CART)" },
@@ -74,18 +79,19 @@ before(async () => {
 
 // Os limites por IP (cadastro, tickets de visitante, login) valem para o arquivo todo, já que
 // todas as requisições saem do mesmo IP; cada cenário começa com os contadores zerados.
-beforeEach(() => resetAllLimiters());
+beforeEach(async () => resetAllLimiters());
 
-after(() => {
-  server?.close();
+after(async () => {
+  if (server) await new Promise((resolve) => server.close(resolve));
+  await store.close({ dropSchema: true });
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test("aceite 01: cadastro responde 201 sem a senha e grava hash", () => {
+test("aceite 01: cadastro responde 201 sem a senha e grava hash", async () => {
   assert.equal(ana.reg.status, 201);
   assert.equal(ana.reg.body.password, undefined);
   assert.equal(ana.reg.body.password_hash, undefined);
-  const saved = store.get("profiles", ana.id);
+  const saved = await (store.get("profiles", ana.id));
   assert.match(saved.password_hash, /^\$2[aby]\$/);
 });
 
@@ -131,7 +137,7 @@ test("anúncio: dono vem do token; outro usuário toma 403; id inexistente 404",
 });
 
 test("aceite 04/05: cada pessoa vê as próprias notificações; item alheio responde 403", async () => {
-  const offer = store.list("products")[0];
+  const offer = (await store.list("products"))[0];
   const res = await call("POST", "/offers", { token: bruno.token, body: { product_id: offer.id, offered_price: 250 } });
   assert.equal(res.status, 201);
 
@@ -146,7 +152,7 @@ test("aceite 04/05: cada pessoa vê as próprias notificações; item alheio res
 });
 
 test("negociação: não aceita a própria proposta; dono não negocia consigo", async () => {
-  const offer = store.list("offers")[0];
+  const offer = (await store.list("offers"))[0];
   const self = await call("PATCH", `/offers/${offer.id}`, { token: bruno.token, body: { status: "ACCEPTED" } });
   assert.equal(self.status, 403);
   const own = await call("POST", "/offers", { token: ana.token, body: { product_id: offer.product_id, offered_price: 10 } });
@@ -163,10 +169,10 @@ test("alerta por título: GTA VI até R$ 200 dispara com anúncio de 'G.T.A. VI'
   assert.equal(alert.body.active, true);
 
   await call("POST", "/products", { token: ana.token, body: { game_id: "game-gta6", price: 250 } });
-  assert.equal(store.get("price_alerts", alert.body.id).active, true);
+  assert.equal((await store.get("price_alerts", alert.body.id)).active, true);
 
   const cheap = await call("POST", "/products", { token: ana.token, body: { game_id: "game-gta6", price: 199 } });
-  const fired = store.get("price_alerts", alert.body.id);
+  const fired = await (store.get("price_alerts", alert.body.id));
   assert.equal(fired.active, false);
   assert.equal(fired.triggered_product_id, cheap.body.id);
   const notes = await call("GET", "/notifications", { token: bruno.token });
@@ -174,7 +180,7 @@ test("alerta por título: GTA VI até R$ 200 dispara com anúncio de 'G.T.A. VI'
 });
 
 test("pedido: servidor calcula total, só o comprador aprova e o anúncio sai do catálogo", async () => {
-  const product = store.list("products").find((p) => p.title === "GTA VI" && p.price === 250);
+  const product = (await store.list("products")).find((p) => p.title === "GTA VI" && p.price === 250);
   const order = await call("POST", "/orders", {
     token: bruno.token,
     body: { items: [{ product_id: product.id, quantity: 1 }], total: 1, buyer_id: ana.id },
@@ -187,18 +193,18 @@ test("pedido: servidor calcula total, só o comprador aprova e o anúncio sai do
   assert.equal(sellerTry.body.status, "pending");
   const approved = await call("PATCH", `/orders/${order.body.id}`, { token: bruno.token, body: { status: "approved" } });
   assert.equal(approved.body.status, "approved");
-  assert.equal(store.get("products", product.id), null);
+  assert.equal(await (store.get("products", product.id)), null);
 
   const again = await call("PATCH", `/orders/${order.body.id}`, { token: bruno.token, body: { status: "approved" } });
   assert.equal(again.status, 409);
 });
 
 test("reembolso: vendedor confirma o pagamento, mas só o admin libera a conta", async () => {
-  const order = store.list("orders")[0];
+  const order = (await store.list("orders"))[0];
   const refund = await call("POST", "/refunds", { token: ana.token, body: { order_id: order.id, amount: 1 } });
   assert.equal(refund.status, 201);
   assert.equal(refund.body.amount, 250);
-  assert.equal(store.get("profiles", ana.id).account_status, "refund_pending");
+  assert.equal((await store.get("profiles", ana.id)).account_status, "refund_pending");
 
   const blocked = await call("POST", "/products", { token: ana.token, body: { game_id: "game-002", price: 10 } });
   assert.equal(blocked.status, 403);
@@ -213,7 +219,7 @@ test("reembolso: vendedor confirma o pagamento, mas só o admin libera a conta",
   const paid = await call("PATCH", `/refunds/${refund.body.id}`, { token: ana.token, body: { status: "paid" } });
   assert.equal(paid.status, 200);
   assert.equal(paid.body.status, "paid");
-  assert.equal(store.get("profiles", ana.id).account_status, "refund_pending");
+  assert.equal((await store.get("profiles", ana.id)).account_status, "refund_pending");
   const aindaBloqueada = await call("POST", "/products", { token: ana.token, body: { game_id: "game-002", price: 10 } });
   assert.equal(aindaBloqueada.status, 403);
   const avisoVendedor = await call("GET", "/notifications", { token: ana.token });
@@ -235,17 +241,17 @@ test("reembolso: vendedor confirma o pagamento, mas só o admin libera a conta",
   assert.equal(liberado.status, 200);
   assert.equal(liberado.body.status, "released");
   assert.ok(liberado.body.released_at);
-  assert.equal(store.get("profiles", ana.id).account_status, "active");
+  assert.equal((await store.get("profiles", ana.id)).account_status, "active");
 
   const duasVezes = await call("PATCH", `/admin/refunds/${refund.body.id}/liberar`, { token: admin.token });
   assert.equal(duasVezes.status, 409);
 });
 
 test("PATCH /usuarios/me ignora account_status vindo do cliente", async () => {
-  store.update("profiles", bruno.id, { account_status: "refund_pending" });
+  await (store.update("profiles", bruno.id, { account_status: "refund_pending" }));
   const res = await call("PATCH", "/usuarios/me", { token: bruno.token, body: { account_status: "active" } });
   assert.equal(res.body.account_status, "refund_pending");
-  store.update("profiles", bruno.id, { account_status: "active" });
+  await (store.update("profiles", bruno.id, { account_status: "active" }));
 });
 
 test("alerta: jogo do catálogo não aceita plataforma em que não existe", async () => {
@@ -301,12 +307,12 @@ test("avaliação: sem transação responde 403; com pedido aprovado responde 20
   assert.equal(vendedor.status, 201);
 
   // Terceiro sem transação também não edita avaliação legada sem troca.
-  const legada = store.insert("profile_reviews", {
+  const legada = await (store.insert("profile_reviews", {
     id: "REV-legada", profile_id: davi.id, author_id: ana.id, rating: 2, comment: "Antiga", badge: "[VERIFIED_TRADE]",
-  });
+  }));
   const editLegada = await call("PATCH", `/profile_reviews/${legada.id}`, { token: ana.token, body: { rating: 1 } });
   assert.equal(editLegada.status, 403);
-  store.remove("profile_reviews", legada.id);
+  await (store.remove("profile_reviews", legada.id));
 });
 
 test("ticket: visitante precisa de contact_email válido; logado não precisa", async () => {
@@ -327,7 +333,7 @@ test("ticket: visitante precisa de contact_email válido; logado não precisa", 
   const visitante = await call("POST", "/tickets", { body: { ...ticket, contact_email: " Visitante@Exemplo.com " } });
   assert.equal(visitante.status, 201);
   assert.equal(visitante.body.contact_email, "visitante@exemplo.com");
-  assert.equal(store.get("tickets", visitante.body.id).contact_email, "visitante@exemplo.com");
+  assert.equal((await store.get("tickets", visitante.body.id)).contact_email, "visitante@exemplo.com");
 
   const logado = await call("POST", "/tickets", { token: ana.token, body: ticket });
   assert.equal(logado.status, 201);
@@ -335,7 +341,7 @@ test("ticket: visitante precisa de contact_email válido; logado não precisa", 
 });
 
 test("negociação aceita não pode ser excluída (409); a outra parte ainda toma 403 antes", async () => {
-  const accepted = store.find("offers", (o) => o.status === "ACCEPTED")[0];
+  const accepted = (await store.find("offers", (o) => o.status === "ACCEPTED"))[0];
   assert.ok(accepted);
   const intruso = await signup("Intruso");
   const alheio = await call("DELETE", `/offers/${accepted.id}`, { token: intruso.token });
@@ -345,7 +351,7 @@ test("negociação aceita não pode ser excluída (409); a outra parte ainda tom
   const res = await call("DELETE", `/offers/${accepted.id}`, { token: ana.token });
   assert.equal(res.status, 409);
   assert.equal(res.body.message, "Negociações aceitas não podem ser excluídas.");
-  assert.ok(store.get("offers", accepted.id));
+  assert.ok(await (store.get("offers", accepted.id)));
 });
 
 test("_limit inválido é ignorado em vez de esvaziar a lista", async () => {
@@ -385,7 +391,7 @@ test("login: 429 na 6ª falha seguida; sucesso zera o contador", async () => {
   }
 });
 
-test("SEGREDO ausente, de exemplo ou curto é recusado", () => {
+test("SEGREDO ausente, de exemplo ou curto é recusado", async () => {
   assert.match(problemaDoSegredo(""), /não definido/);
   assert.match(problemaDoSegredo("troque-por-um-segredo"), /valor de exemplo/);
   assert.match(problemaDoSegredo("curto"), /pelo menos 32/);
@@ -403,7 +409,7 @@ test("admin: entra com admin/admin; role vem no /usuarios/me e some do perfil p�
   assert.ok(publicos.body.every((p) => p.role === undefined));
   // garantirAdmin é idempotente.
   assert.equal(await garantirAdmin(), false);
-  assert.equal(store.find("profiles", (p) => p.role === "admin").length, 1);
+  assert.equal((await store.find("profiles", (p) => p.role === "admin")).length, 1);
 });
 
 test("admin: cliente não consegue se promover a admin", async () => {
@@ -411,7 +417,7 @@ test("admin: cliente não consegue se promover a admin", async () => {
     body: { handle: "Esperto", email: "esperto@cefet.br", password: "segredo123", shipping_address: address, role: "admin" },
   });
   assert.equal(reg.status, 201);
-  assert.equal(store.get("profiles", reg.body.id).role, undefined);
+  assert.equal((await store.get("profiles", reg.body.id)).role, undefined);
   const login = await call("POST", "/login", { body: { email: "esperto@cefet.br", password: "segredo123" } });
   const patch = await call("PATCH", "/usuarios/me", { token: login.body.token, body: { role: "admin" } });
   assert.equal(patch.body.role, undefined);
@@ -527,7 +533,7 @@ test("admin remove anúncio denunciado: cascata, denúncias resolvidas e vendedo
   const offer = await call("POST", "/offers", { token: ana.token, body: { product_id: prod.body.id, offered_price: 350 } });
   assert.equal(offer.status, 201);
   await call("POST", "/messages", { token: ana.token, body: { offer_id: offer.body.id, text: "Faz por 350?" } });
-  assert.ok(store.find("messages", (m) => m.offer_id === offer.body.id).length);
+  assert.ok((await store.find("messages", (m) => m.offer_id === offer.body.id)).length);
 
   const rep = await call("POST", "/reports", { token: ana.token, body: { product_id: prod.body.id, reason: "GOLPE" } });
   const lista = await call("GET", "/admin/reports", { token: admin.token });
@@ -537,10 +543,10 @@ test("admin remove anúncio denunciado: cascata, denúncias resolvidas e vendedo
   assert.equal((await call("DELETE", "/admin/products/nao-existe", { token: admin.token })).status, 404);
   const del = await call("DELETE", `/admin/products/${prod.body.id}`, { token: admin.token });
   assert.equal(del.status, 200);
-  assert.equal(store.get("products", prod.body.id), null);
-  assert.equal(store.get("offers", offer.body.id), null);
-  assert.equal(store.find("messages", (m) => m.offer_id === offer.body.id).length, 0);
-  const resolvida = store.get("reports", rep.body.id);
+  assert.equal(await (store.get("products", prod.body.id)), null);
+  assert.equal(await (store.get("offers", offer.body.id)), null);
+  assert.equal((await store.find("messages", (m) => m.offer_id === offer.body.id)).length, 0);
+  const resolvida = await (store.get("reports", rep.body.id));
   assert.equal(resolvida.status, "RESOLVED_REMOVED");
   assert.ok(resolvida.resolved_at);
   assert.equal(resolvida.product_title, "GTA VI");
@@ -556,7 +562,7 @@ test("#17: 20 logins errados em paralelo geram no máximo 5 respostas 401; o res
   await signup("Paralelo");
   try {
     const respostas = await Promise.all(
-      Array.from({ length: 20 }, () =>
+      Array.from({ length: 20 }, async () =>
         call("POST", "/login", { body: { email: "paralelo@cefet.br", password: "errada" } }),
       ),
     );
@@ -572,23 +578,23 @@ test("#17: 20 logins errados em paralelo geram no máximo 5 respostas 401; o res
 test("migração: 'paid' legado vira 'released'; 'paid' do fluxo novo fica intacto", async () => {
   const legado = await signup("Legado");
   const novo = await signup("Novo");
-  store.update("profiles", novo.id, { account_status: "refund_pending" });
-  store.insert("refunds", { id: "RFD-LEGADO", seller_id: legado.id, status: "paid", paid_at: "2026-01-01T00:00:00.000Z" });
-  store.insert("refunds", { id: "RFD-NOVO", seller_id: novo.id, status: "paid", paid_at: "2026-01-02T00:00:00.000Z" });
+  await (store.update("profiles", novo.id, { account_status: "refund_pending" }));
+  await (store.insert("refunds", { id: "RFD-LEGADO", seller_id: legado.id, status: "paid", paid_at: "2026-01-01T00:00:00.000Z" }));
+  await (store.insert("refunds", { id: "RFD-NOVO", seller_id: novo.id, status: "paid", paid_at: "2026-01-02T00:00:00.000Z" }));
   const log = console.log;
-  console.log = () => {};
+  console.log = async () => {};
   try {
     await migrate();
     await migrate();
   } finally {
     console.log = log;
   }
-  assert.equal(store.get("refunds", "RFD-LEGADO").status, "released");
-  assert.equal(store.get("refunds", "RFD-LEGADO").released_at, "2026-01-01T00:00:00.000Z");
-  assert.equal(store.get("refunds", "RFD-NOVO").status, "paid");
-  assert.equal(store.get("profiles", novo.id).account_status, "refund_pending");
-  store.remove("refunds", "RFD-LEGADO");
-  store.remove("refunds", "RFD-NOVO");
+  assert.equal((await store.get("refunds", "RFD-LEGADO")).status, "released");
+  assert.equal((await store.get("refunds", "RFD-LEGADO")).released_at, "2026-01-01T00:00:00.000Z");
+  assert.equal((await store.get("refunds", "RFD-NOVO")).status, "paid");
+  assert.equal((await store.get("profiles", novo.id)).account_status, "refund_pending");
+  await (store.remove("refunds", "RFD-LEGADO"));
+  await (store.remove("refunds", "RFD-NOVO"));
 });
 
 // ---------------------------------------------------------------- #21: troca de senha
@@ -630,7 +636,7 @@ test("#21: troca de senha — 401 sem token, 400 senha atual errada, 400 nova in
     assert.equal(longa.status, 400);
     assert.equal(longa.body.field, "new_password");
 
-    const hashAntes = store.get("profiles", user.id).password_hash;
+    const hashAntes = (await store.get("profiles", user.id)).password_hash;
     const ok = await call("PATCH", "/usuarios/me/senha", {
       token: user.token,
       body: { current_password: "segredo123", new_password: "novaSenha123" },
@@ -638,7 +644,7 @@ test("#21: troca de senha — 401 sem token, 400 senha atual errada, 400 nova in
     assert.equal(ok.status, 200);
     assert.equal(ok.body.message, "Senha alterada com sucesso.");
     assert.ok(ok.body.token); // #24: token novo para a sessão atual
-    const hashDepois = store.get("profiles", user.id).password_hash;
+    const hashDepois = (await store.get("profiles", user.id)).password_hash;
     assert.notEqual(hashDepois, hashAntes);
     assert.match(hashDepois, /^\$2[aby]\$/);
 
@@ -689,14 +695,14 @@ test("#10: visitante recebe access_code uma vez; consulta funciona; hash nunca �
   assert.equal(criado.status, 201);
   assert.match(criado.body.access_code, /^[A-Z0-9]{8}$/);
   assert.equal(criado.body.access_code_hash, undefined);
-  const salvo = store.get("tickets", criado.body.id);
+  const salvo = await (store.get("tickets", criado.body.id));
   assert.match(salvo.access_code_hash, /^[0-9a-f]{64}$/);
   assert.equal(salvo.access_code, undefined);
 
   // Ticket de usuário logado não ganha código.
   const logado = await call("POST", "/tickets", { token: ana.token, body: ticket });
   assert.equal(logado.body.access_code, undefined);
-  assert.equal(store.get("tickets", logado.body.id).access_code_hash, undefined);
+  assert.equal((await store.get("tickets", logado.body.id)).access_code_hash, undefined);
 
   // O admin responde; o visitante consulta com o código (aceita minúsculas e espaços).
   await call("PATCH", `/admin/tickets/${criado.body.id}`, {
@@ -767,18 +773,18 @@ test("#18: venda aprovada preserva a negociação ACCEPTED e o chat; as outras s
   await call("POST", "/messages", { token: curioso.token, body: { offer_id: outra.body.id, text: "Faz por 200?" } });
   const ok = await call("PATCH", `/offers/${aceita.body.id}`, { token: vendedora.token, body: { status: "ACCEPTED" } });
   assert.equal(ok.body.status, "ACCEPTED");
-  const msgsAntes = store.find("messages", (m) => m.offer_id === aceita.body.id).length;
+  const msgsAntes = (await store.find("messages", (m) => m.offer_id === aceita.body.id)).length;
   assert.equal(msgsAntes, 2);
 
   const order = await call("POST", "/orders", { token: comprador.token, body: { items: [{ product_id: prod.body.id, quantity: 1 }] } });
   assert.equal(order.status, 201);
   const aprovado = await call("PATCH", `/orders/${order.body.id}`, { token: comprador.token, body: { status: "approved" } });
   assert.equal(aprovado.body.status, "approved");
-  assert.equal(store.get("products", prod.body.id), null);
+  assert.equal(await (store.get("products", prod.body.id)), null);
 
   // A negociação não aceita e as mensagens dela foram apagadas.
-  assert.equal(store.get("offers", outra.body.id), null);
-  assert.equal(store.find("messages", (m) => m.offer_id === outra.body.id).length, 0);
+  assert.equal(await (store.get("offers", outra.body.id)), null);
+  assert.equal((await store.find("messages", (m) => m.offer_id === outra.body.id)).length, 0);
 
   // A aceita continua, com o retrato do anúncio.
   for (const parte of [comprador, vendedora]) {
@@ -815,10 +821,10 @@ test("#18: remoção do anúncio pelo dono ou pelo admin também preserva a nego
         ? await call("DELETE", `/products/${prod.body.id}`, { token: vend.token })
         : await call("DELETE", `/admin/products/${prod.body.id}`, { token: admin.token });
     assert.equal(del.status, 200);
-    const salva = store.get("offers", offer.body.id);
+    const salva = await (store.get("offers", offer.body.id));
     assert.ok(salva, `negociação aceita sumiu (${quemRemove})`);
     assert.equal(salva.product_removed, true);
     assert.equal(salva.product_title, "GTA VI");
-    assert.ok(store.find("messages", (m) => m.offer_id === offer.body.id).length >= 1);
+    assert.ok((await store.find("messages", (m) => m.offer_id === offer.body.id)).length >= 1);
   }
 });

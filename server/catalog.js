@@ -50,14 +50,14 @@ const refKey = (text) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const exigeItem = (collection, id, label) => {
-  const item = store.get(collection, id);
+const exigeItem = async (collection, id, label) => {
+  const item = await store.get(collection, id);
   if (!item) fail(404, `${label} não encontrado.`);
   return item;
 };
 
 // Anúncios ligados ao jogo: pelo game_id ou, nos antigos sem game_id, por título + plataforma.
-const linkedProducts = (game) =>
+const linkedProducts = async (game) =>
   store.find(
     "products",
     (p) =>
@@ -65,8 +65,8 @@ const linkedProducts = (game) =>
       (!p.game_id && refKey(p.title) === refKey(game.title) && p.platform === game.platform),
   );
 
-function exigeJogoUnico(title, platform, ignoreId) {
-  const duplicate = store.find(
+async function exigeJogoUnico(title, platform, ignoreId) {
+  const duplicate = await store.find(
     "games",
     (g) => !sameId(g.id, ignoreId) && refKey(g.title) === refKey(title) && g.platform === platform,
   );
@@ -74,10 +74,10 @@ function exigeJogoUnico(title, platform, ignoreId) {
 }
 
 // ---------------------------------------------------------------- Catálogo (UC13): só admin escreve
-router.post("/games", exigeJwt, exigeAdmin, (req, res) => {
+router.post("/games", exigeJwt, exigeAdmin, async (req, res) => {
   const body = parse(gameSchema, req.body);
-  exigeJogoUnico(body.title, body.platform);
-  const created = store.insert("games", {
+  await exigeJogoUnico(body.title, body.platform);
+  const created = await store.insert("games", {
     id: store.newId("game-"),
     title: body.title,
     platform: body.platform,
@@ -88,30 +88,30 @@ router.post("/games", exigeJwt, exigeAdmin, (req, res) => {
   res.status(201).json(created);
 });
 
-router.patch("/games/:id", exigeJwt, exigeAdmin, (req, res) => {
-  const game = exigeItem("games", req.params.id, "Jogo");
+router.patch("/games/:id", exigeJwt, exigeAdmin, async (req, res) => {
+  const game = await exigeItem("games", req.params.id, "Jogo");
   const body = parse(gameUpdateSchema, req.body);
   const title = body.title ?? game.title;
   const platform = body.platform ?? game.platform;
-  exigeJogoUnico(title, platform, game.id);
+  await exigeJogoUnico(title, platform, game.id);
 
-  const linked = linkedProducts(game); // antes de alterar o jogo
-  const updated = store.update("games", game.id, { ...body, updated_at: now() });
+  const linked = await linkedProducts(game); // antes de alterar o jogo
+  const updated = await store.update("games", game.id, { ...body, updated_at: now() });
   // O anúncio guarda uma cópia de título e plataforma: mantém tudo coerente com o catálogo.
-  for (const product of linked) store.update("products", product.id, { game_id: game.id, title, platform });
+  for (const product of linked) await store.update("products", product.id, { game_id: game.id, title, platform });
   res.json(updated);
 });
 
-router.delete("/games/:id", exigeJwt, exigeAdmin, (req, res) => {
-  const game = exigeItem("games", req.params.id, "Jogo");
-  const linked = linkedProducts(game);
+router.delete("/games/:id", exigeJwt, exigeAdmin, async (req, res) => {
+  const game = await exigeItem("games", req.params.id, "Jogo");
+  const linked = await linkedProducts(game);
   if (linked.length) {
     fail(
       409,
       `Este jogo tem ${linked.length} anúncio(s) ativo(s). Remova ou altere os anúncios antes de excluí-lo.`,
     );
   }
-  store.remove("games", game.id);
+  await store.remove("games", game.id);
   res.json({});
 });
 
@@ -183,7 +183,7 @@ async function consultCheapShark(title) {
 
 async function resolveReference(title) {
   const key = refKey(title);
-  const cached = store.find("price_references", (r) => r.ref_key === key)[0];
+  const cached = (await store.find("price_references", (r) => r.ref_key === key))[0];
   // Referência manual (admin) não vence; a da CheapShark vale por 24h.
   const fresh =
     cached && (cached.source === "MANUAL" || Date.now() - new Date(cached.fetched_at).getTime() < TTL_MS);
@@ -198,8 +198,8 @@ async function resolveReference(title) {
   }
   const record = { ...data, ref_key: key, title, fetched_at: now() };
   return cached
-    ? store.update("price_references", cached.id, record)
-    : store.insert("price_references", { ...record, id: store.newId("ref-") });
+    ? await store.update("price_references", cached.id, record)
+    : await store.insert("price_references", { ...record, id: store.newId("ref-") });
 }
 
 function lookup(title) {
@@ -211,12 +211,12 @@ function lookup(title) {
 }
 
 // Só consulta títulos que existem no catálogo ou em algum anúncio: ninguém usa a API
-// como proxy livre para a CheapShark nem enche o db.json com títulos inventados.
-const knownTitle = (title) => {
+// como proxy livre para a CheapShark nem enche o banco com títulos inventados.
+const knownTitle = async (title) => {
   const key = refKey(title);
   return (
-    store.find("games", (g) => refKey(g.title) === key)[0]?.title ||
-    store.find("products", (p) => refKey(p.title) === key)[0]?.title ||
+    (await store.find("games", (g) => refKey(g.title) === key))[0]?.title ||
+    (await store.find("products", (p) => refKey(p.title) === key))[0]?.title ||
     null
   );
 };
@@ -225,16 +225,16 @@ const knownTitle = (title) => {
 router.get("/price_references/lookup", async (req, res) => {
   const title = String(req.query.title || "").trim();
   if (!title) fail(400, "Informe o título do jogo.", "title");
-  const canonical = knownTitle(title);
+  const canonical = await knownTitle(title);
   if (!canonical) fail(404, "Título fora do catálogo.");
   res.json(await lookup(canonical));
 });
 
 // Escrita só por admin, com schema: serve para informar o preço de mercado de um título
 // que a CheapShark não cobre (jogos retrô).
-router.post("/price_references", exigeJwt, exigeAdmin, (req, res) => {
+router.post("/price_references", exigeJwt, exigeAdmin, async (req, res) => {
   const body = parse(manualReferenceSchema, req.body);
-  const canonical = knownTitle(body.title);
+  const canonical = await knownTitle(body.title);
   if (!canonical) fail(404, "Título fora do catálogo.", "title");
 
   const key = refKey(canonical);
@@ -252,16 +252,16 @@ router.post("/price_references", exigeJwt, exigeAdmin, (req, res) => {
     price_brl: Math.round(body.price_brl * 100) / 100,
     fetched_at: now(),
   };
-  const cached = store.find("price_references", (r) => r.ref_key === key)[0];
-  if (cached) return res.json(store.update("price_references", cached.id, record));
-  res.status(201).json(store.insert("price_references", { ...record, id: store.newId("ref-") }));
+  const cached = (await store.find("price_references", (r) => r.ref_key === key))[0];
+  if (cached) return res.json(await store.update("price_references", cached.id, record));
+  res.status(201).json(await store.insert("price_references", { ...record, id: store.newId("ref-") }));
 });
 
-router.patch("/price_references/:id", exigeJwt, exigeAdmin, (req, res) => {
-  const ref = exigeItem("price_references", req.params.id, "Referência");
+router.patch("/price_references/:id", exigeJwt, exigeAdmin, async (req, res) => {
+  const ref = await exigeItem("price_references", req.params.id, "Referência");
   const body = parse(manualReferenceUpdateSchema, req.body);
   res.json(
-    store.update("price_references", ref.id, {
+    await store.update("price_references", ref.id, {
       source: "MANUAL",
       found: true,
       matched_title: ref.title,
@@ -277,9 +277,9 @@ router.patch("/price_references/:id", exigeJwt, exigeAdmin, (req, res) => {
 });
 
 // Remove o override manual (ou um registro ruim); a próxima consulta volta à CheapShark.
-router.delete("/price_references/:id", exigeJwt, exigeAdmin, (req, res) => {
-  const ref = exigeItem("price_references", req.params.id, "Referência");
-  store.remove("price_references", ref.id);
+router.delete("/price_references/:id", exigeJwt, exigeAdmin, async (req, res) => {
+  const ref = await exigeItem("price_references", req.params.id, "Referência");
+  await store.remove("price_references", ref.id);
   res.json({});
 });
 

@@ -1,6 +1,6 @@
 // Limitador de taxa em memória (janela fixa), reaproveitado pelo login, troca de senha,
-// cadastro e tickets de visitante. Conte com hit() ANTES do trabalho caro (bcrypt, escrita
-// no db.json). Atrás de proxy, req.ip só é confiável com app.set("trust proxy", ...),
+// cadastro e tickets de visitante. Conte com hit() ANTES do trabalho caro (bcrypt, gravação
+// no banco). Atrás de proxy, req.ip só é confiável com app.set("trust proxy", ...),
 // que não é ativado por padrão.
 const limitadores = new Set();
 

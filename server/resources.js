@@ -14,8 +14,8 @@ import { criarLimitador, ipDe } from "./rateLimit.js";
 const router = Router();
 
 // exigeDono da aula: sem item → 404; item de outra pessoa → 403.
-export function exigeItem(collection, id, label = "Registro") {
-  const item = store.get(collection, id);
+export async function exigeItem(collection, id, label = "Registro") {
+  const item = await store.get(collection, id);
   if (!item) fail(404, `${label} não encontrado.`);
   return item;
 }
@@ -34,12 +34,12 @@ const isSeller = (product, user) =>
 // também tira o anúncio do catálogo. Negociações ACCEPTED são histórico da transação (#18):
 // ficam, com as mensagens, e ganham um retrato do anúncio (product_title, product_price,
 // product_removed). As demais negociações e suas mensagens são apagadas.
-export function removeProductCascade(productId) {
-  const product = store.get("products", productId);
-  const offers = store.find("offers", (o) => sameId(o.product_id, productId));
+export async function removeProductCascade(productId) {
+  const product = await store.get("products", productId);
+  const offers = await store.find("offers", (o) => sameId(o.product_id, productId));
   const removidas = offers.filter((o) => o.status !== "ACCEPTED").map((o) => String(o.id));
   for (const offer of offers.filter((o) => o.status === "ACCEPTED")) {
-    store.update("offers", offer.id, {
+    await store.update("offers", offer.id, {
       product_title: offer.product_title ?? product?.title ?? "Anúncio removido",
       product_price: offer.product_price ?? (product ? Number(product.price) : (offer.original_price ?? null)),
       product_platform: offer.product_platform ?? product?.platform ?? null,
@@ -48,19 +48,19 @@ export function removeProductCascade(productId) {
       product_removed_at: now(),
     });
   }
-  store.removeWhere("messages", (m) => removidas.includes(String(m.offer_id)));
-  store.removeWhere("offers", (o) => removidas.includes(String(o.id)));
+  await store.removeWhere("messages", (m) => removidas.includes(String(m.offer_id)));
+  await store.removeWhere("offers", (o) => removidas.includes(String(o.id)));
   return store.remove("products", productId);
 }
 
 // #30: título e plataforma vêm SEMPRE do catálogo (games). O POST exige game_id (o schema
 // já não aceita title/platform livres); no PATCH sem game_id o jogo atual é mantido.
-function productFromBody(body, current = {}) {
+async function productFromBody(body, current = {}) {
   if (!body.game_id) {
     if (!current.id) fail(400, "Selecione um jogo do catálogo.", "game_id");
     return { ...body, image_url: body.image_url || current.image_url };
   }
-  const game = store.get("games", body.game_id);
+  const game = await store.get("games", body.game_id);
   if (!game) fail(400, "Jogo não encontrado no catálogo.", "game_id");
   return {
     ...body,
@@ -70,87 +70,87 @@ function productFromBody(body, current = {}) {
   };
 }
 
-router.get("/products", (req, res) => res.json(applyQuery(store.list("products"), req.query)));
-router.get("/products/:id", (req, res) => res.json(exigeItem("products", req.params.id, "Anúncio")));
+router.get("/products", async (req, res) => res.json(applyQuery(await store.list("products"), req.query)));
+router.get("/products/:id", async (req, res) => res.json(await exigeItem("products", req.params.id, "Anúncio")));
 
-router.post("/products", exigeJwt, (req, res) => {
+router.post("/products", exigeJwt, async (req, res) => {
   if (isBlocked(req.user)) fail(403, "Conta bloqueada para novos anúncios até a quitação do reembolso PIX.");
-  const body = productFromBody(parse(S.productSchema, req.body));
-  const created = store.insert("products", {
+  const body = await productFromBody(parse(S.productSchema, req.body));
+  const created = await store.insert("products", {
     ...body,
     id: store.newId("prod-"),
     seller_id: req.user.id,
     seller_handle: handleOf(req.user),
     created_at: now(),
   });
-  triggerAlerts(created);
+  await triggerAlerts(created);
   res.status(201).json(created);
 });
 
-router.patch("/products/:id", exigeJwt, (req, res) => {
-  const product = exigeItem("products", req.params.id, "Anúncio");
+router.patch("/products/:id", exigeJwt, async (req, res) => {
+  const product = await exigeItem("products", req.params.id, "Anúncio");
   exigeDono(isSeller(product, req.user), "Apenas o anunciante pode alterar este anúncio.");
   const previousPrice = Number(product.price);
-  const body = productFromBody(parse(S.productUpdateSchema, req.body), product);
-  const updated = store.update("products", product.id, { ...body, updated_at: now() });
-  if (Number(updated.price) < previousPrice) triggerAlerts(updated);
+  const body = await productFromBody(parse(S.productUpdateSchema, req.body), product);
+  const updated = await store.update("products", product.id, { ...body, updated_at: now() });
+  if (Number(updated.price) < previousPrice) await triggerAlerts(updated);
   res.json(updated);
 });
 
-router.delete("/products/:id", exigeJwt, (req, res) => {
-  const product = exigeItem("products", req.params.id, "Anúncio");
+router.delete("/products/:id", exigeJwt, async (req, res) => {
+  const product = await exigeItem("products", req.params.id, "Anúncio");
   exigeDono(isSeller(product, req.user), "Apenas o anunciante pode excluir este anúncio.");
-  removeProductCascade(product.id);
+  await removeProductCascade(product.id);
   res.json({});
 });
 
 // ---------------------------------------------------------------- Catálogo (somente leitura)
-router.get("/games", (req, res) => res.json(applyQuery(store.list("games"), req.query)));
-router.get("/games/:id", (req, res) => res.json(exigeItem("games", req.params.id, "Jogo")));
+router.get("/games", async (req, res) => res.json(applyQuery(await store.list("games"), req.query)));
+router.get("/games/:id", async (req, res) => res.json(await exigeItem("games", req.params.id, "Jogo")));
 
 // ---------------------------------------------------------------- Referência de preço (cache CheapShark)
 // Leitura e escrita públicas de propósito: visitantes também consultam o benchmark.
 // TODO: mover a consulta à CheapShark para o servidor e fechar a escrita.
-router.get("/price_references", (req, res) => res.json(applyQuery(store.list("price_references"), req.query)));
+router.get("/price_references", async (req, res) => res.json(applyQuery(await store.list("price_references"), req.query)));
 
 // ---------------------------------------------------------------- Avaliações
 const reviewAuthor = (review, user) =>
   sameId(review.author_id, user.id) || (!review.author_id && review.author_handle === user.handle);
 
-function syncReputation(profileId) {
-  const reviews = store.find("profile_reviews", (r) => sameId(r.profile_id, profileId));
+async function syncReputation(profileId) {
+  const reviews = await store.find("profile_reviews", (r) => sameId(r.profile_id, profileId));
   if (!reviews.length) return;
   const average = reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length;
-  store.update("profiles", profileId, { reputation: Number(average.toFixed(2)) });
+  await store.update("profiles", profileId, { reputation: Number(average.toFixed(2)) });
 }
 
 // Houve pelo menos um pedido aprovado entre as duas pessoas (qualquer um comprou do outro)?
 // O pedido guarda o comprador em buyer_id e os vendedores em items[].seller_id.
-function hasApprovedTrade(userId, otherId) {
+async function hasApprovedTrade(userId, otherId) {
   const soldBy = (order, id) => (order.items || []).some((item) => sameId(item.seller_id, id));
-  return store.find(
+  return (await store.find(
     "orders",
     (o) =>
       o.status === "approved" &&
       ((sameId(o.buyer_id, userId) && soldBy(o, otherId)) || (sameId(o.buyer_id, otherId) && soldBy(o, userId))),
-  ).length > 0;
+  )).length > 0;
 }
 const NO_TRADE = "Você só pode avaliar usuários com quem concluiu uma transação.";
 
-router.get("/profile_reviews", (req, res) => res.json(applyQuery(store.list("profile_reviews"), req.query)));
+router.get("/profile_reviews", async (req, res) => res.json(applyQuery(await store.list("profile_reviews"), req.query)));
 
-router.post("/profile_reviews", exigeJwt, (req, res) => {
+router.post("/profile_reviews", exigeJwt, async (req, res) => {
   const body = parse(S.reviewSchema, req.body);
-  exigeItem("profiles", body.profile_id, "Operador");
+  await exigeItem("profiles", body.profile_id, "Operador");
   if (sameId(body.profile_id, req.user.id)) fail(403, "Você não pode avaliar a si mesmo.");
-  if (!hasApprovedTrade(req.user.id, body.profile_id)) fail(403, NO_TRADE);
-  const already = store.find(
+  if (!await hasApprovedTrade(req.user.id, body.profile_id)) fail(403, NO_TRADE);
+  const already = await store.find(
     "profile_reviews",
     (r) => sameId(r.profile_id, body.profile_id) && reviewAuthor(r, req.user),
   );
   if (already.length) fail(409, "Você já avaliou este operador. Edite a avaliação existente.");
 
-  const created = store.insert("profile_reviews", {
+  const created = await store.insert("profile_reviews", {
     ...body,
     id: store.newId("REV-"),
     author_id: req.user.id,
@@ -158,8 +158,8 @@ router.post("/profile_reviews", exigeJwt, (req, res) => {
     badge: "[VERIFIED_TRADE]",
     created_at: now(),
   });
-  syncReputation(body.profile_id);
-  notify(body.profile_id, {
+  await syncReputation(body.profile_id);
+  await notify(body.profile_id, {
     type: "REVIEW",
     title: "Nova avaliação recebida",
     body: `${handleOf(req.user)} avaliou você com ${body.rating} estrela(s).`,
@@ -168,20 +168,20 @@ router.post("/profile_reviews", exigeJwt, (req, res) => {
   res.status(201).json(created);
 });
 
-router.patch("/profile_reviews/:id", exigeJwt, (req, res) => {
-  const review = exigeItem("profile_reviews", req.params.id, "Avaliação");
+router.patch("/profile_reviews/:id", exigeJwt, async (req, res) => {
+  const review = await exigeItem("profile_reviews", req.params.id, "Avaliação");
   exigeDono(reviewAuthor(review, req.user), "Só o autor pode alterar a avaliação.");
   // O avaliado não muda (o schema não aceita profile_id) e avaliações antigas, feitas
   // antes desta regra, só podem ser editadas se houver transação concluída.
-  if (!hasApprovedTrade(req.user.id, review.profile_id)) fail(403, NO_TRADE);
+  if (!await hasApprovedTrade(req.user.id, review.profile_id)) fail(403, NO_TRADE);
   const body = parse(S.reviewUpdateSchema, req.body);
-  const updated = store.update("profile_reviews", review.id, {
+  const updated = await store.update("profile_reviews", review.id, {
     ...body,
     author_id: req.user.id,
     badge: "[UPDATED_REVIEW]",
     updated_at: now(),
   });
-  syncReputation(review.profile_id);
+  await syncReputation(review.profile_id);
   res.json(updated);
 });
 
@@ -200,25 +200,25 @@ function systemMessage(offerId, text) {
   });
 }
 
-router.get("/offers", exigeJwt, (req, res) => {
-  const mine = store.find("offers", (o) => isParty(o, req.user));
+router.get("/offers", exigeJwt, async (req, res) => {
+  const mine = await store.find("offers", (o) => isParty(o, req.user));
   res.json(applyQuery(mine, req.query));
 });
 
-router.get("/offers/:id", exigeJwt, (req, res) => {
-  const offer = exigeItem("offers", req.params.id, "Negociação");
+router.get("/offers/:id", exigeJwt, async (req, res) => {
+  const offer = await exigeItem("offers", req.params.id, "Negociação");
   exigeDono(isParty(offer, req.user));
   res.json(offer);
 });
 
-router.post("/offers", exigeJwt, (req, res) => {
+router.post("/offers", exigeJwt, async (req, res) => {
   const body = parse(S.offerCreateSchema, req.body);
-  const product = store.get("products", body.product_id);
+  const product = await store.get("products", body.product_id);
   if (!product) fail(409, "Este anúncio não está mais disponível.");
   if (isSeller(product, req.user)) fail(403, "Você não pode negociar o próprio anúncio.");
   if (isBlocked(req.user)) fail(403, "Conta bloqueada para compras até a quitação do reembolso PIX.");
 
-  const created = store.insert("offers", {
+  const created = await store.insert("offers", {
     id: store.newId("OFF-"),
     product_id: product.id,
     product_title: product.title,
@@ -233,7 +233,7 @@ router.post("/offers", exigeJwt, (req, res) => {
     created_at: now(),
     updated_at: now(),
   });
-  notify(product.seller_id, {
+  await notify(product.seller_id, {
     type: "OFFER",
     title: "Nova proposta recebida",
     body: `${handleOf(req.user)} ofereceu ${brl(body.offered_price)} por "${product.title}".`,
@@ -242,8 +242,8 @@ router.post("/offers", exigeJwt, (req, res) => {
   res.status(201).json(created);
 });
 
-router.patch("/offers/:id", exigeJwt, (req, res) => {
-  const offer = exigeItem("offers", req.params.id, "Negociação");
+router.patch("/offers/:id", exigeJwt, async (req, res) => {
+  const offer = await exigeItem("offers", req.params.id, "Negociação");
   exigeDono(isParty(offer, req.user));
   if (isClosed(offer)) fail(409, "Esta negociação já foi encerrada.");
   const { status, offered_price } = parse(S.offerUpdateSchema, req.body);
@@ -257,7 +257,7 @@ router.patch("/offers/:id", exigeJwt, (req, res) => {
   }
   if (status === "COUNTER_OFFER" && !offered_price) fail(400, "Informe o valor da contraproposta.", "offered_price");
 
-  const updated = store.update("offers", offer.id, {
+  const updated = await store.update("offers", offer.id, {
     status,
     last_action_by: req.user.id,
     updated_at: now(),
@@ -269,7 +269,7 @@ router.patch("/offers/:id", exigeJwt, (req, res) => {
     REJECTED: `[SISTEMA]: Proposta RECUSADA por ${handleOf(req.user)}`,
     COUNTER_OFFER: `[SISTEMA]: Contraproposta enviada no valor de ${brl(offered_price)}`,
   };
-  systemMessage(offer.id, texts[status]);
+  await systemMessage(offer.id, texts[status]);
 
   const titles = {
     ACCEPTED: ["Proposta aceita", `${handleOf(req.user)} aceitou a proposta em "${offer.product_title}".`],
@@ -277,34 +277,34 @@ router.patch("/offers/:id", exigeJwt, (req, res) => {
     COUNTER_OFFER: ["Nova contraproposta", `${handleOf(req.user)} propôs ${brl(offered_price)} em "${offer.product_title}".`],
   };
   const [title, body] = titles[status];
-  notify(isBuyer ? offer.seller_id : offer.buyer_id, { type: "OFFER", title, body, link: "/offers" });
+  await notify(isBuyer ? offer.seller_id : offer.buyer_id, { type: "OFFER", title, body, link: "/offers" });
 
   res.json(updated);
 });
 
-router.delete("/offers/:id", exigeJwt, (req, res) => {
-  const offer = exigeItem("offers", req.params.id, "Negociação");
+router.delete("/offers/:id", exigeJwt, async (req, res) => {
+  const offer = await exigeItem("offers", req.params.id, "Negociação");
   exigeDono(isParty(offer, req.user));
   // Negociação aceita é histórico da transação: não pode sumir.
   if (offer.status === "ACCEPTED") fail(409, "Negociações aceitas não podem ser excluídas.");
-  store.removeWhere("messages", (m) => sameId(m.offer_id, offer.id));
-  store.remove("offers", offer.id);
+  await store.removeWhere("messages", (m) => sameId(m.offer_id, offer.id));
+  await store.remove("offers", offer.id);
   res.json({});
 });
 
 // ---------------------------------------------------------------- Mensagens do chat
-router.get("/messages", exigeJwt, (req, res) => {
-  const myOffers = store.find("offers", (o) => isParty(o, req.user)).map((o) => String(o.id));
-  const mine = store.find("messages", (m) => myOffers.includes(String(m.offer_id)));
+router.get("/messages", exigeJwt, async (req, res) => {
+  const myOffers = (await store.find("offers", (o) => isParty(o, req.user))).map((o) => String(o.id));
+  const mine = await store.find("messages", (m) => myOffers.includes(String(m.offer_id)));
   res.json(applyQuery(mine, req.query));
 });
 
-router.post("/messages", exigeJwt, (req, res) => {
+router.post("/messages", exigeJwt, async (req, res) => {
   const body = parse(S.messageSchema, req.body);
-  const offer = exigeItem("offers", body.offer_id, "Negociação");
+  const offer = await exigeItem("offers", body.offer_id, "Negociação");
   exigeDono(isParty(offer, req.user), "Você não participa desta negociação.");
   if (isClosed(offer)) fail(409, "Negociação encerrada: o chat está em modo somente leitura.");
-  const created = store.insert("messages", {
+  const created = await store.insert("messages", {
     id: store.newId("MSG-"),
     offer_id: offer.id,
     sender_id: req.user.id,
@@ -374,14 +374,14 @@ export function resetConsultaTicketLimiter() {
 const ticketOwner = (ticket, user) =>
   sameId(ticket.author_id, user.id) || (!ticket.author_id && ticket.author_handle === user.handle);
 
-router.get("/tickets", exigeJwt, (req, res) => {
-  const mine = store.find("tickets", (t) => ticketOwner(t, req.user));
+router.get("/tickets", exigeJwt, async (req, res) => {
+  const mine = await store.find("tickets", (t) => ticketOwner(t, req.user));
   const { author_id, ...query } = req.query; // eslint-disable-line no-unused-vars
   res.json(applyQuery(mine, query).map(semSegredoTicket));
 });
 
-router.get("/tickets/:id", exigeJwt, (req, res) => {
-  const ticket = exigeItem("tickets", req.params.id, "Ticket");
+router.get("/tickets/:id", exigeJwt, async (req, res) => {
+  const ticket = await exigeItem("tickets", req.params.id, "Ticket");
   exigeDono(ticketOwner(ticket, req.user));
   res.json(semSegredoTicket(ticket));
 });
@@ -390,10 +390,10 @@ router.get("/tickets/:id", exigeJwt, (req, res) => {
 // Visitante recebe UMA vez, na resposta 201, o código de consulta (access_code) para
 // acompanhar a resposta em POST /tickets/consulta. Só o hash sha256 fica gravado.
 // #27: visitante (sem token) abre no máximo 5 tickets por hora por IP. Conta antes da
-// validação e da escrita no db.json. Quem está logado não entra neste limite.
+// validação e da gravação no banco. Quem está logado não entra neste limite.
 const ticketsVisitante = criarLimitador({ max: 5, janelaMs: 60 * 60 * 1000 });
 
-router.post("/tickets", jwtOpcional, (req, res) => {
+router.post("/tickets", jwtOpcional, async (req, res) => {
   if (!req.user) {
     const ip = ipDe(req);
     if (ticketsVisitante.bloqueado(ip)) {
@@ -407,7 +407,7 @@ router.post("/tickets", jwtOpcional, (req, res) => {
     fail(400, "Informe um e-mail de contato para receber a resposta.", "contact_email");
   }
   const access_code = req.user ? null : gerarCodigoConsulta();
-  const created = store.insert("tickets", {
+  const created = await store.insert("tickets", {
     ...body,
     id: store.newId("TCK-").toUpperCase(),
     author_id: req.user?.id || "GUEST_SESSION",
@@ -427,13 +427,13 @@ const CAMPOS_CONSULTA = [
   "id", "subject", "category", "priority", "status", "admin_reply", "replied_at", "created_at", "updated_at",
 ];
 
-router.post("/tickets/consulta", (req, res) => {
+router.post("/tickets/consulta", async (req, res) => {
   const chave = req.ip || req.socket?.remoteAddress || "?";
   if (consultaBloqueada(chave)) fail(429, "Muitas consultas de ticket. Tente novamente em alguns minutos.");
   registrarConsulta(chave);
 
   const { id, codigo } = parse(S.ticketConsultaSchema, req.body);
-  const ticket = store.get("tickets", id);
+  const ticket = await store.get("tickets", id);
   if (!ticket?.access_code_hash || !codigoConfere(codigo, ticket.access_code_hash)) fail(404, CONSULTA_FALHA);
 
   const publico = {};
@@ -441,64 +441,64 @@ router.post("/tickets/consulta", (req, res) => {
   res.json(publico);
 });
 
-router.patch("/tickets/:id", exigeJwt, (req, res) => {
-  const ticket = exigeItem("tickets", req.params.id, "Ticket");
+router.patch("/tickets/:id", exigeJwt, async (req, res) => {
+  const ticket = await exigeItem("tickets", req.params.id, "Ticket");
   exigeDono(ticketOwner(ticket, req.user));
   if (ticket.status !== "OPEN") fail(409, "Só tickets em aberto podem ser alterados.");
   const body = parse(S.ticketUpdateSchema, req.body);
-  res.json(semSegredoTicket(store.update("tickets", ticket.id, { ...body, updated_at: now() })));
+  res.json(semSegredoTicket(await store.update("tickets", ticket.id, { ...body, updated_at: now() })));
 });
 
-router.delete("/tickets/:id", exigeJwt, (req, res) => {
-  const ticket = exigeItem("tickets", req.params.id, "Ticket");
+router.delete("/tickets/:id", exigeJwt, async (req, res) => {
+  const ticket = await exigeItem("tickets", req.params.id, "Ticket");
   exigeDono(ticketOwner(ticket, req.user));
   if (ticket.status !== "OPEN") fail(409, "Só tickets em aberto podem ser cancelados.");
-  store.remove("tickets", ticket.id);
+  await store.remove("tickets", ticket.id);
   res.json({});
 });
 
 // ---------------------------------------------------------------- Notificações
 const ownNotification = (n, user) => sameId(n.user_id, user.id);
 
-router.get("/notifications", exigeJwt, (req, res) => {
+router.get("/notifications", exigeJwt, async (req, res) => {
   const { user_id, ...query } = req.query; // eslint-disable-line no-unused-vars
-  res.json(applyQuery(store.find("notifications", (n) => ownNotification(n, req.user)), query));
+  res.json(applyQuery(await store.find("notifications", (n) => ownNotification(n, req.user)), query));
 });
 
 router.post("/notifications", exigeJwt, () => fail(403, "Notificações são criadas apenas pelo sistema."));
 
-router.patch("/notifications/:id", exigeJwt, (req, res) => {
-  const item = exigeItem("notifications", req.params.id, "Notificação");
+router.patch("/notifications/:id", exigeJwt, async (req, res) => {
+  const item = await exigeItem("notifications", req.params.id, "Notificação");
   exigeDono(ownNotification(item, req.user));
-  res.json(store.update("notifications", item.id, parse(S.notificationUpdateSchema, req.body)));
+  res.json(await store.update("notifications", item.id, parse(S.notificationUpdateSchema, req.body)));
 });
 
-router.delete("/notifications/:id", exigeJwt, (req, res) => {
-  const item = exigeItem("notifications", req.params.id, "Notificação");
+router.delete("/notifications/:id", exigeJwt, async (req, res) => {
+  const item = await exigeItem("notifications", req.params.id, "Notificação");
   exigeDono(ownNotification(item, req.user));
-  store.remove("notifications", item.id);
+  await store.remove("notifications", item.id);
   res.json({});
 });
 
 // ---------------------------------------------------------------- Alertas de preço por título (UC11)
-router.get("/price_alerts", exigeJwt, (req, res) => {
+router.get("/price_alerts", exigeJwt, async (req, res) => {
   const { user_id, ...query } = req.query; // eslint-disable-line no-unused-vars
-  res.json(applyQuery(store.find("price_alerts", (a) => sameId(a.user_id, req.user.id)), query));
+  res.json(applyQuery(await store.find("price_alerts", (a) => sameId(a.user_id, req.user.id)), query));
 });
 
 // Jogo do catálogo só aceita plataforma em que ele existe. Título fora do catálogo aceita qualquer uma.
-function checkAlertPlatform(title, platform) {
+async function checkAlertPlatform(title, platform) {
   if (!platform) return;
-  const platforms = store.find("games", (g) => normalize(g.title) === normalize(title)).map((g) => g.platform);
+  const platforms = (await store.find("games", (g) => normalize(g.title) === normalize(title))).map((g) => g.platform);
   if (platforms.length && !platforms.includes(platform)) {
     fail(400, `"${title}" não existe para ${platform}. Plataformas no catálogo: ${platforms.join(", ")}.`, "platform");
   }
 }
 
-router.post("/price_alerts", exigeJwt, (req, res) => {
+router.post("/price_alerts", exigeJwt, async (req, res) => {
   const body = parse(S.alertSchema, req.body);
-  checkAlertPlatform(body.title, body.platform);
-  const created = store.insert("price_alerts", {
+  await checkAlertPlatform(body.title, body.platform);
+  const created = await store.insert("price_alerts", {
     id: store.newId("ALR-"),
     user_id: req.user.id,
     title: body.title,
@@ -507,29 +507,29 @@ router.post("/price_alerts", exigeJwt, (req, res) => {
     active: true,
     created_at: now(),
   });
-  checkExistingListings(created);
-  res.status(201).json(store.get("price_alerts", created.id));
+  await checkExistingListings(created);
+  res.status(201).json(await store.get("price_alerts", created.id));
 });
 
-router.patch("/price_alerts/:id", exigeJwt, (req, res) => {
-  const alert = exigeItem("price_alerts", req.params.id, "Alerta");
+router.patch("/price_alerts/:id", exigeJwt, async (req, res) => {
+  const alert = await exigeItem("price_alerts", req.params.id, "Alerta");
   exigeDono(sameId(alert.user_id, req.user.id));
   const body = parse(S.alertUpdateSchema, req.body);
-  if (body.platform) checkAlertPlatform(alert.title, body.platform);
+  if (body.platform) await checkAlertPlatform(alert.title, body.platform);
   const reactivate = body.active === true || (body.target_price !== undefined && body.active !== false);
   const patch = { ...body, updated_at: now() };
   if (reactivate) {
     Object.assign(patch, { active: true, triggered_at: null, triggered_price: null, triggered_product_id: null });
   }
-  const updated = store.update("price_alerts", alert.id, patch);
-  if (updated.active) checkExistingListings(updated);
-  res.json(store.get("price_alerts", alert.id));
+  const updated = await store.update("price_alerts", alert.id, patch);
+  if (updated.active) await checkExistingListings(updated);
+  res.json(await store.get("price_alerts", alert.id));
 });
 
-router.delete("/price_alerts/:id", exigeJwt, (req, res) => {
-  const alert = exigeItem("price_alerts", req.params.id, "Alerta");
+router.delete("/price_alerts/:id", exigeJwt, async (req, res) => {
+  const alert = await exigeItem("price_alerts", req.params.id, "Alerta");
   exigeDono(sameId(alert.user_id, req.user.id));
-  store.remove("price_alerts", alert.id);
+  await store.remove("price_alerts", alert.id);
   res.json({});
 });
 
@@ -538,18 +538,18 @@ const sellerIdsOf = (order) => (order.items || []).map((item) => String(item.sel
 const isOrderParty = (order, user) =>
   sameId(order.buyer_id, user.id) || sellerIdsOf(order).includes(String(user.id));
 
-router.get("/orders", exigeJwt, (req, res) => {
-  res.json(applyQuery(store.find("orders", (o) => isOrderParty(o, req.user)), req.query));
+router.get("/orders", exigeJwt, async (req, res) => {
+  res.json(applyQuery(await store.find("orders", (o) => isOrderParty(o, req.user)), req.query));
 });
 
-router.get("/orders/:id", exigeJwt, (req, res) => {
-  const order = exigeItem("orders", req.params.id, "Pedido");
+router.get("/orders/:id", exigeJwt, async (req, res) => {
+  const order = await exigeItem("orders", req.params.id, "Pedido");
   exigeDono(isOrderParty(order, req.user));
   res.json(order);
 });
 
 // O cliente manda só os anúncios e quantidades; preço, total, partes e PIX são do servidor.
-router.post("/orders", exigeJwt, (req, res) => {
+router.post("/orders", exigeJwt, async (req, res) => {
   if (isBlocked(req.user)) fail(403, "Conta bloqueada para compras até a quitação do reembolso PIX.");
   const address = req.user.shipping_address;
   if (!address?.street || !address?.postal_code) {
@@ -557,8 +557,8 @@ router.post("/orders", exigeJwt, (req, res) => {
   }
   const { items } = parse(S.orderCreateSchema, req.body);
 
-  const orderItems = items.map(({ product_id, quantity }) => {
-    const product = store.get("products", product_id);
+  const orderItems = await Promise.all(items.map(async ({ product_id, quantity }) => {
+    const product = await store.get("products", product_id);
     if (!product) fail(409, "Um dos anúncios do carrinho não está mais disponível.");
     if (isSeller(product, req.user)) fail(403, "Você não pode comprar o próprio anúncio.");
     const unit = Number(product.price);
@@ -573,11 +573,11 @@ router.post("/orders", exigeJwt, (req, res) => {
       unit_price: unit,
       subtotal: Number((unit * quantity).toFixed(2)),
     };
-  });
+  }));
   const total = Number(orderItems.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
   const id = `ORD-${Date.now().toString(36).toUpperCase()}-${store.newId().slice(0, 8)}`;
 
-  const created = store.insert("orders", {
+  const created = await store.insert("orders", {
     id,
     items: orderItems,
     total,
@@ -595,8 +595,8 @@ router.post("/orders", exigeJwt, (req, res) => {
 
 // Só o comprador aprova (PIX simulado): pending → approved. Ao aprovar, o servidor
 // retira os anúncios do catálogo e avisa os vendedores.
-router.patch("/orders/:id", exigeJwt, (req, res) => {
-  const order = exigeItem("orders", req.params.id, "Pedido");
+router.patch("/orders/:id", exigeJwt, async (req, res) => {
+  const order = await exigeItem("orders", req.params.id, "Pedido");
   exigeDono(isOrderParty(order, req.user));
 
   if (!sameId(order.buyer_id, req.user.id)) {
@@ -607,11 +607,11 @@ router.patch("/orders/:id", exigeJwt, (req, res) => {
   if (body.status !== "approved") return res.json(order);
   if (order.status !== "pending") fail(409, "Este pedido não está mais aguardando pagamento.");
 
-  const updated = store.update("orders", order.id, { status: "approved", approved_at: now() });
-  for (const item of order.items || []) removeProductCascade(item.product_id);
+  const updated = await store.update("orders", order.id, { status: "approved", approved_at: now() });
+  for (const item of order.items || []) await removeProductCascade(item.product_id);
   for (const sellerId of new Set(sellerIdsOf(order))) {
     const titles = order.items.filter((i) => sameId(i.seller_id, sellerId)).map((i) => i.title);
-    notify(sellerId, {
+    await notify(sellerId, {
       type: "ORDER",
       title: "Venda aprovada",
       body: `${order.buyer_handle} pagou via PIX: ${titles.join(", ")}. Prepare o envio.`,
@@ -624,15 +624,15 @@ router.patch("/orders/:id", exigeJwt, (req, res) => {
 // ---------------------------------------------------------------- Reembolsos (cancelar entrega)
 const isRefundParty = (refund, user) => sameId(refund.seller_id, user.id) || sameId(refund.buyer_id, user.id);
 
-router.get("/refunds", exigeJwt, (req, res) => {
-  res.json(applyQuery(store.find("refunds", (r) => isRefundParty(r, req.user)), req.query));
+router.get("/refunds", exigeJwt, async (req, res) => {
+  res.json(applyQuery(await store.find("refunds", (r) => isRefundParty(r, req.user)), req.query));
 });
 
 // O vendedor cancela a entrega dos itens dele: o servidor calcula o valor, gera o PIX,
 // registra o cancelamento no pedido e bloqueia a conta até o reembolso ser pago.
-router.post("/refunds", exigeJwt, (req, res) => {
+router.post("/refunds", exigeJwt, async (req, res) => {
   const { order_id } = parse(S.refundCreateSchema, req.body);
-  const order = exigeItem("orders", order_id, "Pedido");
+  const order = await exigeItem("orders", order_id, "Pedido");
   const sellerItems = (order.items || []).filter((item) => sameId(item.seller_id, req.user.id));
   exigeDono(sellerItems.length > 0, "Apenas o vendedor dos itens pode cancelar a entrega.");
   if (order.status !== "approved") fail(409, "Só pedidos pagos podem ter a entrega cancelada.");
@@ -643,7 +643,7 @@ router.post("/refunds", exigeJwt, (req, res) => {
 
   const amount = Number(sellerItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0).toFixed(2));
   const id = `RFD-${Date.now().toString(36).toUpperCase()}-${store.newId().slice(0, 6).toUpperCase()}`;
-  const refund = store.insert("refunds", {
+  const refund = await store.insert("refunds", {
     id,
     order_id: order.id,
     seller_id: req.user.id,
@@ -658,14 +658,14 @@ router.post("/refunds", exigeJwt, (req, res) => {
     pix_copy_paste: createDemoPixPayload(amount, id),
     created_at: now(),
   });
-  store.update("orders", order.id, {
+  await store.update("orders", order.id, {
     delivery_cancellations: [
       ...cancellations,
       { seller_id: req.user.id, refund_id: id, status: "cancelled", cancelled_at: now() },
     ],
   });
-  store.update("profiles", req.user.id, { account_status: "refund_pending" });
-  notify(order.buyer_id, {
+  await store.update("profiles", req.user.id, { account_status: "refund_pending" });
+  await notify(order.buyer_id, {
     type: "REFUND",
     title: "Entrega cancelada",
     body: `${handleOf(req.user)} cancelou a entrega de ${refund.item_titles.join(", ")}. Reembolso de ${brl(amount)} em andamento.`,
@@ -674,22 +674,22 @@ router.post("/refunds", exigeJwt, (req, res) => {
   res.status(201).json(refund);
 });
 
-router.patch("/refunds/:id", exigeJwt, (req, res) => {
-  const refund = exigeItem("refunds", req.params.id, "Reembolso");
+router.patch("/refunds/:id", exigeJwt, async (req, res) => {
+  const refund = await exigeItem("refunds", req.params.id, "Reembolso");
   exigeDono(sameId(refund.seller_id, req.user.id), "Apenas o vendedor confirma o pagamento do reembolso.");
   parse(S.refundUpdateSchema, req.body);
   if (refund.status !== "pending") fail(409, "Este reembolso já foi pago.");
 
   // Fluxo pending → paid → released: confirmar o pagamento NÃO desbloqueia a conta;
   // só o administrador libera (PATCH /admin/refunds/:id/liberar).
-  const updated = store.update("refunds", refund.id, { status: "paid", paid_at: now() });
-  notify(refund.buyer_id, {
+  const updated = await store.update("refunds", refund.id, { status: "paid", paid_at: now() });
+  await notify(refund.buyer_id, {
     type: "REFUND",
     title: "Reembolso pago",
     body: `Você recebeu o reembolso de ${brl(refund.amount)} referente a ${refund.item_titles.join(", ")}.`,
     link: "/profile",
   });
-  notify(refund.seller_id, {
+  await notify(refund.seller_id, {
     type: "REFUND",
     title: "Pagamento do reembolso registrado",
     body: `Pagamento de ${brl(refund.amount)} confirmado. Sua conta aguarda a liberação do administrador.`,
@@ -700,17 +700,17 @@ router.patch("/refunds/:id", exigeJwt, (req, res) => {
 
 // ---------------------------------------------------------------- Denúncias de anúncio
 // Só usuário logado denuncia; não há GET público (a lista fica em /admin/reports).
-router.post("/reports", exigeJwt, (req, res) => {
+router.post("/reports", exigeJwt, async (req, res) => {
   const body = parse(S.reportCreateSchema, req.body);
-  const product = exigeItem("products", body.product_id, "Anúncio");
+  const product = await exigeItem("products", body.product_id, "Anúncio");
   if (isSeller(product, req.user)) fail(403, "Você não pode denunciar o próprio anúncio.");
-  const duplicada = store.find(
+  const duplicada = await store.find(
     "reports",
     (r) => sameId(r.product_id, product.id) && sameId(r.reporter_id, req.user.id) && r.status === "OPEN",
   );
   if (duplicada.length) fail(409, "Você já denunciou este anúncio.");
 
-  const created = store.insert("reports", {
+  const created = await store.insert("reports", {
     id: store.newId("RPT-").toUpperCase(),
     product_id: product.id,
     // Retrato do anúncio: ele pode ser apagado depois.

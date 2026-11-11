@@ -2,7 +2,7 @@
 
 > **Plataforma P2P e marketplace para compra, venda e negociação de mídias físicas retrô e clássicas.**
 
-Projeto desenvolvido para a disciplina de Programação Web, com frontend em **React** + **Tailwind CSS** (abordagem **Mobile-First**) e uma **API REST própria em Node.js/Express**, com autenticação **JWT (Passport)**, validação com **Zod** e persistência em arquivo JSON (`db.json`).
+Projeto desenvolvido para a disciplina de Programação Web, com frontend em **React** + **Tailwind CSS** (abordagem **Mobile-First**) e uma **API REST própria em Node.js/Express**, com autenticação **JWT (Passport)**, validação com **Zod** e persistência em **PostgreSQL**.
 
 ---
 
@@ -38,7 +38,7 @@ O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicaç�
 | **Backend** | [Express 5](https://expressjs.com/) | API REST |
 | **Autenticação** | [Passport](https://www.passportjs.org/) + `passport-jwt`, `jsonwebtoken`, `bcryptjs` | Login com JWT e hash de senhas |
 | **Validação no servidor** | [Zod](https://zod.dev/) | A API valida todo corpo recebido |
-| **Persistência** | Arquivo `db.json` | Banco de dados em JSON, lido e gravado pela camada `server/store.js` |
+| **Persistência** | PostgreSQL (`pg`) | Registros JSONB por coleção, acessados pela camada `server/store.js`; importa dados legados de `db.json` uma única vez |
 | **Testes** | `node:test` | Testes de integração da API |
 | **Concorrência** | [Concurrently](https://github.com/open-cli-tools/concurrently) | Sobe API e frontend em um único terminal |
 
@@ -49,7 +49,7 @@ O **SaveState Market** (codinome de interface *NULL//EXCHANGE*) é uma aplicaç�
 ```
 SaveStateMarket/
 ├── env                     # Modelo das variáveis de ambiente (copiar para .env)
-├── db.json                 # Banco de dados (JSON) usado pela API
+├── db.json                 # Dados legados, importados uma única vez para o PostgreSQL
 ├── index.html              # Ponto de entrada HTML do Vite
 ├── package.json            # Dependências e scripts
 ├── postcss.config.js       # PostCSS para compilação do Tailwind
@@ -62,8 +62,8 @@ SaveStateMarket/
 │   ├── resources.js        # Anúncios, jogos, ofertas, mensagens, tickets, pedidos, reembolsos, denúncias...
 │   ├── admin.js            # Rotas do administrador (/admin/*): tickets, reembolsos e denúncias
 │   ├── schemas.js          # Validação Zod do lado do servidor
-│   ├── store.js            # Camada de dados (leitura/escrita do db.json)
-│   ├── migrate.js          # Ajustes automáticos no db.json (ex.: hash de senhas antigas)
+│   ├── store.js            # Camada de dados PostgreSQL e importação do JSON legado
+│   ├── migrate.js          # Migrações idempotentes dos registros
 │   ├── alerts.js           # Regras dos alertas de preço
 │   ├── notify.js           # Criação de notificações
 │   ├── pix.js              # Gerador de PIX simulado
@@ -89,6 +89,7 @@ SaveStateMarket/
 ### Pré-requisitos
 - [Node.js](https://nodejs.org/) **20 ou superior** (o script da API usa `node --watch` e os testes usam `node --test`).
 - npm (instalado junto com o Node.js).
+- PostgreSQL 14 ou superior (local ou serviço gerenciado) e um banco criado para a aplicação.
 
 ### 1. Clonar o repositório
 ```bash
@@ -112,7 +113,7 @@ cp env .env
 Copy-Item env .env
 ```
 
-Depois, defina um valor próprio para `SEGREDO` no `.env` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar um:
+Configure `DATABASE_URL` no `.env` com a URL de conexão do PostgreSQL e defina um valor próprio para `SEGREDO` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar o segredo:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -120,10 +121,11 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 | Variável | Obrigatória | Padrão | Descrição |
 | :--- | :---: | :--- | :--- |
+| `DATABASE_URL` | ✅ | — | URL de conexão PostgreSQL, por exemplo `postgresql://usuario:senha@localhost:5432/savestate_market`. |
 | `SEGREDO` | ✅ | — | Segredo usado para assinar os tokens JWT. A API não inicia se ele faltar, for o valor de exemplo `troque-por-um-segredo` ou tiver menos de 32 caracteres. |
 | `PORT` | | `3001` | Porta da API. |
 | `CORS_ORIGIN` | | `http://localhost:5173` | Origem do frontend autorizada a chamar a API. |
-| `DB_PATH` | | `db.json` | Caminho do arquivo de banco de dados. |
+| `DB_PATH` | | `db.json` | Caminho do JSON legado a importar na primeira inicialização. Depois da importação, o backend usa somente o PostgreSQL. |
 
 > Se mudar a porta da API, atualize também `API_URL` em `src/config.js`.
 
@@ -139,7 +141,7 @@ npm run server   # API Express em http://localhost:3001 (reinicia ao salvar arqu
 npm run dev      # Frontend Vite em http://localhost:5173
 ```
 
-Na primeira execução, a API ajusta o `db.json` automaticamente (por exemplo, converte senhas antigas em hash bcrypt).
+Na primeira execução, a API cria as tabelas necessárias e importa os dados de `db.json` (se o arquivo existir). A importação é registrada e não se repete; as migrações de dados existentes, como hashes de senha, são aplicadas em seguida. Faça backup do banco antes de iniciar uma migração em produção.
 
 ### 5. Acessar no navegador
 - **Interface Web:** [`http://localhost:5173`](http://localhost:5173)
@@ -150,8 +152,14 @@ Crie uma conta em **/cadastrar** e depois entre em **/entrar** para usar as áre
 ### Outros scripts
 | Comando | Descrição |
 | :--- | :--- |
-| `npm test` | Executa os testes de integração da API (usam um banco temporário, sem alterar o `db.json`). |
+| `npm test` | Executa os testes de integração; requer `TEST_DATABASE_URL` apontando para um banco PostgreSQL descartável. Os testes criam e removem schemas isolados. |
 | `npm run build` | Gera o build de produção do frontend em `dist/`. |
+
+No PowerShell, configure a URL do banco exclusivo para testes antes de executar a suíte:
+```powershell
+$env:TEST_DATABASE_URL = "postgresql://usuario:senha@localhost:5432/savestate_market_test"
+npm test
+```
 
 ---
 

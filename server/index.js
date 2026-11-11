@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { migrate } from "./migrate.js";
 import { problemaDoSegredo } from "./auth.js";
+import { initialize } from "./store.js";
 
 const PORT = Number(process.env.PORT || 3001);
 
@@ -13,10 +14,10 @@ if (problema) {
 }
 
 try {
+  await initialize();
   await migrate();
 } catch (error) {
-  // Qualquer falha na migração do db.json impede a API de subir, com mensagem clara.
-  console.error(`Não foi possível subir a API: ${error.message}`);
+  console.error(`Não foi possível conectar ou preparar o PostgreSQL: ${error.message}`);
   process.exit(1);
 }
 

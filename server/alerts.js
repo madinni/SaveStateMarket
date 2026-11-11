@@ -23,14 +23,14 @@ export function alertMatches(alert, product) {
   return Number(product.price) <= Number(alert.target_price);
 }
 
-function fire(alert, product) {
-  store.update("price_alerts", alert.id, {
+async function fire(alert, product) {
+  await store.update("price_alerts", alert.id, {
     active: false,
     triggered_at: now(),
     triggered_price: Number(product.price),
     triggered_product_id: product.id,
   });
-  notify(alert.user_id, {
+  await notify(alert.user_id, {
     type: "PRICE_ALERT",
     title: `Alerta de preço: ${product.title}`,
     body: `Encontramos "${product.title}" (${product.platform}) por ${brl(product.price)}. Seu alvo: ${brl(alert.target_price)}.`,
@@ -39,17 +39,17 @@ function fire(alert, product) {
 }
 
 // Chamado quando um anúncio é publicado ou tem o preço reduzido.
-export function triggerAlerts(product) {
-  const hits = store.find("price_alerts", (alert) => alertMatches(alert, product));
-  hits.forEach((alert) => fire(alert, product));
+export async function triggerAlerts(product) {
+  const hits = await store.find("price_alerts", (alert) => alertMatches(alert, product));
+  for (const alert of hits) await fire(alert, product);
   return hits.length;
 }
 
 // Chamado ao criar/reativar um alerta: se já existe anúncio no alvo, dispara na hora.
-export function checkExistingListings(alert) {
-  const candidates = store
-    .find("products", (product) => alertMatches(alert, product))
+export async function checkExistingListings(alert) {
+  const candidates = (await store
+    .find("products", (product) => alertMatches(alert, product)))
     .sort((a, b) => Number(a.price) - Number(b.price));
-  if (candidates.length) fire(alert, candidates[0]);
+  if (candidates.length) await fire(alert, candidates[0]);
   return candidates[0] || null;
 }

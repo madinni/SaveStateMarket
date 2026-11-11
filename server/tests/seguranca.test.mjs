@@ -1,5 +1,5 @@
 // Testes das correções de segurança do relatório (relatorios-teste/relatorio.md).
-// Como nos outros arquivos: DB_PATH temporário e SEGREDO ANTES do import dinâmico do store.
+// Como nos outros arquivos: schema PostgreSQL isolado e SEGREDO antes do import dinâmico do store.
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,6 +8,10 @@ import path from "node:path";
 import bcrypt from "bcryptjs";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "savestate-seg-"));
+if (!process.env.TEST_DATABASE_URL) throw new Error("Defina TEST_DATABASE_URL para executar os testes com PostgreSQL.");
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+process.env.DB_SCHEMA = `savestate_test_seg_${process.pid}`;
+process.env.NODE_ENV = "test";
 process.env.DB_PATH = path.join(tmp, "db.json");
 process.env.SEGREDO = "segredo-de-teste-com-pelo-menos-32-caracteres";
 
@@ -72,24 +76,26 @@ const ticket = {
 };
 
 before(async () => {
+  await store.initialize();
   const hash = await bcrypt.hash("senha-do-admin", 10);
-  store.reset({
+  await (store.reset({
     profiles: [{ id: "u-adm", handle: "@adm", email: "adm@teste.io", password_hash: hash, role: "admin", account_status: "active" }],
     games: [
       { id: "game-001", title: "Chrono Trigger", platform: "SNES (CART)" },
       { id: "game-002", title: "Super Metroid", platform: "SNES (CART)", cover_url: "https://exemplo.com/capa.jpg" },
     ],
-  });
+  }));
   server = createApp().listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${server.address().port}`;
   adminToken = (await call("POST", "/login", { body: { email: "adm@teste.io", password: "senha-do-admin" } })).body.token;
 });
 
-beforeEach(() => resetAllLimiters());
+beforeEach(async () => resetAllLimiters());
 
-after(() => {
-  server?.close();
+after(async () => {
+  if (server) await new Promise((resolve) => server.close(resolve));
+  await store.close({ dropSchema: true });
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -167,7 +173,7 @@ test("#27: cadastro tem limite por IP (10 por hora → 429)", async () => {
     body: { handle: "Lote10", email: "lote10@teste.io", password: "senha-forte-1", shipping_address: address },
   });
   assert.equal(bloqueado.status, 429);
-  assert.equal(store.find("profiles", (p) => p.email === "lote10@teste.io").length, 0);
+  assert.equal((await store.find("profiles", (p) => p.email === "lote10@teste.io")).length, 0);
 });
 
 test("#27: ticket de visitante tem limite por IP (5 por hora → 429); logado não entra no limite", async () => {
