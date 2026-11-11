@@ -64,6 +64,8 @@ export default function OperativeProfile() {
   const queryClient = useQueryClient();
 
   const targetHandle = searchParams.get("handle");
+  // ?pedido=<id>: vindo do checkout, rola até a compra e a destaca em MINHAS COMPRAS.
+  const highlightedOrderId = searchParams.get("pedido");
   const clean = normalize(targetHandle || user?.handle);
   const isOwnProfile =
     !targetHandle || (user && normalize(user.handle) === normalize(targetHandle));
@@ -135,6 +137,11 @@ export default function OperativeProfile() {
     });
   }, [addressForm.reset, isOwnProfile, user?.id, user?.shipping_address]);
 
+  useEffect(() => {
+    if (!highlightedOrderId || loadingOrders || loadingProfiles) return;
+    document.getElementById(`pedido-${highlightedOrderId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightedOrderId, loadingOrders, loadingProfiles, orders.length]);
+
   if (!targetHandle && !user) return <Navigate to="/login" replace />;
 
   if (loadingProfiles) {
@@ -158,6 +165,9 @@ export default function OperativeProfile() {
       order.status === "approved" &&
       order.items?.some((item) => String(item.seller_id) === String(user?.id)),
   );
+  const buyerOrders = orders
+    .filter((order) => String(order.buyer_id) === String(user?.id))
+    .sort((a, b) => String(b.approved_at || b.created_at || "").localeCompare(String(a.approved_at || a.created_at || "")));
   const avatarSrc = (isOwnProfile && user?.avatar_url) || profile.avatar_url || DEFAULT_AVATAR;
 
   const handleAvatarUpload = async (e) => {
@@ -431,6 +441,57 @@ export default function OperativeProfile() {
         )}
 
         {isOwnProfile && <ChangePasswordForm idPrefix="profile-pwd" />}
+
+        {isOwnProfile && (
+          <section className="space-y-2" aria-labelledby="my-purchases-title">
+            <h2 id="my-purchases-title" className="border-b border-noir-800 pb-1 text-xs font-bold text-white">
+              MINHAS COMPRAS ({buyerOrders.length})
+            </h2>
+            {loadingOrders ? (
+              <div className="bg-noir-900 border border-noir-800 p-4 text-center text-xs text-slate-500">CARREGANDO COMPRAS...</div>
+            ) : buyerOrders.length === 0 ? (
+              <div className="bg-noir-900 border border-noir-800 p-4 text-center text-xs text-slate-500">VOCÊ AINDA NÃO FEZ NENHUMA COMPRA.</div>
+            ) : buyerOrders.map((order) => {
+              const orderRefunds = refunds.filter((entry) => String(entry.order_id) === String(order.id));
+              const isHighlighted = String(order.id) === String(highlightedOrderId);
+              const statusLabel = orderRefunds.length
+                ? ["ENTREGA CANCELADA", "text-neon-amber"]
+                : order.status === "approved"
+                  ? ["PAGO", "text-neon-mint"]
+                  : ["AGUARDANDO PAGAMENTO", "text-neon-amber"];
+              return (
+                <article key={order.id} id={`pedido-${order.id}`}
+                  className={`bg-noir-900 border p-3 chamfer-box space-y-2 scroll-mt-32 ${isHighlighted ? "border-neon-cyan glow-cyan" : "border-noir-700"}`}>
+                  <div className="flex flex-wrap justify-between gap-2 text-xs">
+                    <span className={`font-bold ${statusLabel[1]}`}>[{statusLabel[0]}]</span>
+                    <span className="text-slate-500 break-all">{order.id}</span>
+                  </div>
+                  <ul className="space-y-1 text-xs text-slate-300">
+                    {order.items?.map((item) => (
+                      <li key={item.product_id}>
+                        {item.title} · QTD {item.quantity} · vendedor {item.seller_handle || "—"}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-slate-300">TOTAL: <strong className="text-neon-mint">{formatBRL(order.total)}</strong></p>
+                  <p className="text-xs leading-relaxed text-slate-400">ENTREGA EM: {formatShippingAddress(order.shipping_address)}</p>
+                  {orderRefunds.map((refund) => (
+                    <p key={refund.id} className="text-xs text-neon-amber">
+                      O vendedor cancelou a entrega. Reembolso de {formatBRL(refund.amount)}:{" "}
+                      {refund.status === "released" ? "concluído" : refund.status === "paid" ? "pago pelo vendedor" : "pendente"}.
+                    </p>
+                  ))}
+                  {order.status === "approved" && (
+                    <p className="text-xs text-slate-400">
+                      Algo errado ao receber?{" "}
+                      <Link to="/support" className="text-neon-cyan underline">Abra um ticket no suporte</Link> com fotos e o número do pedido.
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        )}
 
         {isOwnProfile && (
           <section className="space-y-2">

@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
+import PriceInput from "../components/PriceInput";
 import OwnerActions from "../components/OwnerActions";
 import PriceBenchmark from "../components/PriceBenchmark";
 import PriceAlertBox from "../components/PriceAlertBox";
@@ -13,6 +14,7 @@ import { useProduct } from "../hooks/useProducts";
 import { useCreateOffer } from "../hooks/useOffers";
 import { useCreateReport } from "../hooks/useReports";
 import { offerSchema, reportSchema, REPORT_REASONS } from "../schemas";
+import { notify } from "../utils/toast";
 
 const REPORT_DEFAULTS = { reason: "", details: "" };
 
@@ -132,9 +134,12 @@ export default function ProductDetails() {
           message?.trim() || `Proposta enviada no valor de R$ ${Number(price).toFixed(2)}`,
         ),
       });
+      notify.success("Proposta enviada. Continue a conversa na mesa de negociação.");
       navigate("/offers");
     } catch (err) {
-      setActionError(err.message || "Erro ao iniciar negociação.");
+      const message = err.message || "Erro ao iniciar negociação.";
+      setActionError(message);
+      notify.error(message);
     }
   };
 
@@ -150,6 +155,7 @@ export default function ProductDetails() {
 
   const closeModal = () => {
     setShowOfferModal(false);
+    setActionError("");
     reset({ price: "", message: "" });
   };
 
@@ -171,10 +177,14 @@ export default function ProductDetails() {
       await createReport.mutateAsync({ product_id: String(product.id), reason, ...(details ? { details } : {}) });
       closeReport();
       setReportNotice("Denúncia enviada. A moderação vai analisar este anúncio.");
+      notify.success("Denúncia enviada para a moderação.");
     } catch (err) {
       // 409: já denunciado; 403: anúncio próprio; 404: anúncio removido. A mensagem vem do servidor.
       if (err.field && err.field in REPORT_DEFAULTS) reportForm.setError(err.field, { message: err.message });
-      else setReportError(err.message || "Não foi possível enviar a denúncia.");
+      else {
+        setReportError(err.message || "Não foi possível enviar a denúncia.");
+        notify.error(err.message || "Não foi possível enviar a denúncia.");
+      }
     }
   };
 
@@ -286,7 +296,7 @@ export default function ProductDetails() {
 
             <div>
               <label htmlFor="offer-price" className="block text-[10px] text-slate-400 mb-1">SUA PROPOSTA (R$)</label>
-              <input id="offer-price" type="number" step="0.01" {...register("price")}
+              <PriceInput id="offer-price" placeholder="Ex: 250,00" {...register("price")}
                 className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs font-bold focus:outline-none focus:border-neon-cyan" />
               <FieldError error={errors.price} />
             </div>
@@ -297,6 +307,9 @@ export default function ProductDetails() {
                 className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-cyan resize-none" />
               <FieldError error={errors.message} />
             </div>
+
+            {/* O erro da ação aparece dentro do modal (antes ficava escondido atrás dele). */}
+            {actionError && <p role="alert" className="text-[11px] font-bold text-neon-pink">⚠ {actionError}</p>}
 
             <div className="flex gap-2 pt-2">
               <button type="button" onClick={closeModal} className="flex-1 py-2 bg-noir-800 text-slate-300 border border-slate-600 text-xs font-bold">

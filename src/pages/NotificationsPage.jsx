@@ -4,6 +4,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
+import PriceInput from "../components/PriceInput";
+import { notify } from "../utils/toast";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
 import { useGames } from "../hooks/useGames";
@@ -90,7 +92,7 @@ function AlertRow({ alert, products, userId, busy, onUpdate, onDelete }) {
 
       {editing ? (
         <form onSubmit={handleSubmit(submit)} noValidate className="space-y-2">
-          <input type="number" step="0.01" aria-label="Novo alvo" {...register("target_price")} className={inputClass} />
+          <PriceInput aria-label="Novo alvo" placeholder="Ex: 200,00" {...register("target_price")} className={inputClass} />
           <FieldError error={errors.target_price} />
           <div className="flex gap-2">
             <button type="button" onClick={() => { setEditing(false); reset({ target_price: alert.target_price }); }}
@@ -162,8 +164,10 @@ function NewAlertForm() {
           : `Já existe um anúncio de "${alert.title}" no seu alvo! Confira suas notificações.`,
       );
       reset({ title: "", platform: "", target_price: "" });
+      notify.success(alert.active ? "Alerta de preço ativado." : "Já existe um anúncio no seu alvo. Confira as notificações.");
     } catch (err) {
       setError(err.message || "Não foi possível criar o alerta.");
+      notify.error(err.message || "Não foi possível criar o alerta.");
     }
   };
 
@@ -197,7 +201,7 @@ function NewAlertForm() {
 
       <div>
         <label htmlFor="new-alert-target" className="block text-xs text-slate-400 mb-1">ME AVISE QUANDO HOUVER ANÚNCIO POR ATÉ (R$)</label>
-        <input id="new-alert-target" type="number" step="0.01" placeholder="Ex: 200" {...register("target_price")} className={inputClass} />
+        <PriceInput id="new-alert-target" placeholder="Ex: 200,00" {...register("target_price")} className={inputClass} />
         <FieldError error={errors.target_price} />
       </div>
 
@@ -236,6 +240,7 @@ export default function NotificationsPage() {
       await action();
     } catch (err) {
       setError(err.message || "Não foi possível concluir a ação.");
+      notify.error(err.message || "Não foi possível concluir a ação.");
     }
   };
 

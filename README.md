@@ -89,11 +89,11 @@ SaveStateMarket/
 ### Pré-requisitos
 - [Node.js](https://nodejs.org/) **20 ou superior** (o script da API usa `node --watch` e os testes usam `node --test`).
 - npm (instalado junto com o Node.js).
-- PostgreSQL 14 ou superior (local ou serviço gerenciado) e um banco criado para a aplicação.
+- [PostgreSQL](https://www.postgresql.org/download/) **14 ou superior**, instalado e em execução (local ou serviço gerenciado). Veja a etapa 3.
 
 ### 1. Clonar o repositório
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/madinni/SaveStateMarket.git
 cd SaveStateMarket
 ```
 
@@ -102,7 +102,32 @@ cd SaveStateMarket
 npm install
 ```
 
-### 3. Configurar as variáveis de ambiente
+### 3. Preparar o PostgreSQL
+A API não usa mais o `db.json` como banco: ela precisa de um PostgreSQL rodando e de um banco vazio para a aplicação. As tabelas são criadas sozinhas na primeira execução; você só precisa criar o banco.
+
+1. Instale o PostgreSQL (no Windows, pelo instalador oficial; ele cria o serviço `postgresql-x64-<versão>`, que já inicia com o sistema, e pede uma senha para o usuário `postgres`, guarde-a). A porta padrão é `5432`.
+2. Confira se o serviço está rodando:
+   ```powershell
+   # Windows (PowerShell)
+   Get-Service *postgres*
+   ```
+   ```bash
+   # Linux
+   sudo systemctl status postgresql
+   ```
+3. Crie o banco da aplicação (será pedida a senha do usuário `postgres`):
+   ```powershell
+   # Windows (PowerShell); troque 18 pela versão instalada
+   & "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres savestate_market
+   ```
+   ```bash
+   # Linux / macOS (ou Windows com o bin do PostgreSQL no PATH)
+   createdb -U postgres savestate_market
+   ```
+   Também dá para criar pelo pgAdmin (clique direito em *Databases* → *Create* → *Database…*) ou pelo `psql` com `CREATE DATABASE savestate_market;`.
+4. (Opcional, para rodar `npm test`) crie um segundo banco, só para os testes: `createdb -U postgres savestate_market_test`. Os testes criam e apagam schemas próprios nele; não use o banco da aplicação.
+
+### 4. Configurar as variáveis de ambiente
 Crie um arquivo `.env` na raiz do projeto a partir do modelo `.env.example`:
 
 ```bash
@@ -113,7 +138,7 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Configure `DATABASE_URL` no `.env` com a URL de conexão do PostgreSQL e defina um valor próprio para `SEGREDO` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar o segredo:
+Configure `DATABASE_URL` no `.env` com a URL de conexão do PostgreSQL, no formato `postgresql://postgres:SUA_SENHA@localhost:5432/savestate_market` (se a senha tiver caracteres especiais, codifique-os: `@` → `%40`, `#` → `%23`, `:` → `%3A`, `/` → `%2F`, `%` → `%25`), e defina um valor próprio para `SEGREDO` (pelo menos 32 caracteres; a API não sobe com o valor de exemplo). Para gerar o segredo:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -129,7 +154,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 > Se mudar a porta da API, atualize também `API_URL` em `src/config.js`.
 
-### 4. Subir a API e o frontend
+### 5. Subir a API e o frontend
 Para rodar os dois juntos em um único terminal:
 ```bash
 npm run full-dev
@@ -143,7 +168,9 @@ npm run dev      # Frontend Vite em http://localhost:5173
 
 Na primeira execução, a API cria as tabelas necessárias e importa os dados de `db.json` (se o arquivo existir). A importação é registrada e não se repete; as migrações de dados existentes, como hashes de senha, são aplicadas em seguida. Faça backup do banco antes de iniciar uma migração em produção.
 
-### 5. Acessar no navegador
+> Se a API parar com `DATABASE_URL não definido`, falta a variável no `.env` (etapa 4). Se aparecer `password authentication failed`, a senha na URL está errada; se for `database "savestate_market" does not exist`, crie o banco (etapa 3); se for `ECONNREFUSED`, o serviço do PostgreSQL não está rodando ou a porta é outra.
+
+### 6. Acessar no navegador
 - **Interface Web:** [`http://localhost:5173`](http://localhost:5173)
 - **API REST:** [`http://localhost:3001`](http://localhost:3001) (responde `{"api":"SaveState Market","status":"online"}`)
 
@@ -174,8 +201,8 @@ Rotas marcadas com 🔒 exigem o cabeçalho `Authorization: Bearer <token>`. As 
 | **Anúncios** | `GET /products` · `GET /products/:id` · 🔒 `POST /products` (`game_id` do catálogo obrigatório; título e plataforma vêm do jogo; `image_url` com a mesma regra do `avatar_url`) · 🔒 `PATCH/DELETE /products/:id` (só o anunciante; `PATCH` sem `game_id` mantém o jogo) |
 | **Catálogo de jogos** | `GET /games` · `GET /games/:id` (somente leitura) |
 | **Referência de preço** | `GET/POST /price_references` · `PATCH /price_references/:id` |
-| **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` (só com pedido `approved` entre as partes; senão `403`) |
-| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` (`DELETE` de negociação `ACCEPTED` responde `409`). Quando o anúncio sai do catálogo (venda, exclusão pelo dono ou pelo admin), as negociações `ACCEPTED` e suas mensagens são preservadas com `product_title`, `product_price` e `product_removed: true`; as demais são apagadas. |
+| **Avaliações** | `GET /profile_reviews` · 🔒 `POST /profile_reviews` · 🔒 `PATCH /profile_reviews/:id` (só com pedido `approved` entre as partes; senão `403`; uma avaliação por autor e avaliado, garantida por índice único: a segunda, mesmo em paralelo, responde `409`) |
+| **Negociações** | 🔒 `GET/POST /offers` · 🔒 `GET/PATCH/DELETE /offers/:id` (`DELETE` de negociação `ACCEPTED` responde `409`; `PATCH` é condicional: em negociação encerrada responde `409` "Esta negociação já foi encerrada." e, se a outra ação gravou antes, `409` "A negociação foi atualizada pela outra parte. Recarregue e tente de novo."). Quando o anúncio sai do catálogo (venda, exclusão pelo dono ou pelo admin), as negociações `ACCEPTED` e suas mensagens são preservadas com `product_title`, `product_price` e `product_removed: true`; as demais são apagadas. |
 | **Mensagens** | 🔒 `GET/POST /messages` |
 | **Tickets** | `POST /tickets` (visitantes também, com `contact_email` obrigatório; o visitante recebe uma única vez `access_code` na resposta `201`; visitante: 5 tickets por IP por hora, depois `429`) · `POST /tickets/consulta` (`{ id, codigo }` → `200` com `id`, `subject`, `category`, `priority`, `status`, `admin_reply`, `replied_at`, `created_at`, `updated_at`; ticket inexistente ou código errado → `404`; 10 tentativas por IP em 15 min, depois `429`) · 🔒 `GET /tickets` · 🔒 `GET/PATCH/DELETE /tickets/:id` |
 | **Notificações** | 🔒 `GET /notifications` · 🔒 `PATCH/DELETE /notifications/:id` |

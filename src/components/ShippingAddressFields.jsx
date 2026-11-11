@@ -13,7 +13,17 @@ const BRAZILIAN_STATES = [
   ["SP", "São Paulo"], ["SE", "Sergipe"], ["TO", "Tocantins"],
 ];
 
-const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+// Normaliza nomes de cidade/rua para comparação: sem acento, minúsculas, sem apóstrofo,
+// hífen vira espaço e espaços repetidos são colapsados ("Pau-d'Arco" == "pau darco").
+const normalize = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['’‘`´]/g, "")
+    .replace(/[-‐–—]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default function ShippingAddressFields({ register, setValue, watch, errors, prefix = "shipping_address", fieldPath = "shipping_address" }) {
   const addressError = errors?.shipping_address || errors;
@@ -27,8 +37,18 @@ export default function ShippingAddressFields({ register, setValue, watch, error
   const street = watch(streetPath) || "";
   const city = watch(cityPath) || "";
   const state = String(watch(statePath) || "").toUpperCase();
+  // Lista de municípios { id, nome } do IBGE e a UF a que ela pertence.
   const [cities, setCities] = useState([]);
+  const [citiesUf, setCitiesUf] = useState("");
   const [citiesStatus, setCitiesStatus] = useState("idle");
+  // Cidade vinda do ViaCEP aguardando a lista de municípios da UF carregar.
+  const [pendingCepCity, setPendingCepCity] = useState(null);
+  const [cityNotice, setCityNotice] = useState("");
+  // Rua preenchida pelo CEP: já conta como confirmada e não depende da busca externa.
+  const streetFromCepRef = useRef(false);
+  // Cidade e rua informadas pelo último CEP consultado ({ uf, ibge, nome, street }). Servem para
+  // invalidar a rua quando o usuário troca para outra cidade e reconfirmá-la se ele voltar.
+  const cepCityRef = useRef(null);
   const [retryCities, setRetryCities] = useState(0);
   const [cepStatus, setCepStatus] = useState("");
   const [streetSearch, setStreetSearch] = useState(street);
@@ -47,6 +67,7 @@ export default function ShippingAddressFields({ register, setValue, watch, error
   useEffect(() => {
     if (!state) {
       setCities([]);
+      setCitiesUf("");
       setCitiesStatus("idle");
       return undefined;
     }
@@ -59,7 +80,8 @@ export default function ShippingAddressFields({ register, setValue, watch, error
         return response.json();
       })
       .then((data) => {
-        setCities(data.map((municipality) => municipality.nome));
+        setCities(data.map((municipality) => ({ id: String(municipality.id), nome: municipality.nome })));
+        setCitiesUf(state);
         setCitiesStatus("ready");
       })
       .catch((error) => {
@@ -90,14 +112,24 @@ export default function ShippingAddressFields({ register, setValue, watch, error
           setCepStatus("CEP não encontrado. Confira os números informados.");
           return;
         }
-        setValue(statePath, data.uf || "", { shouldDirty: true, shouldValidate: true });
-        setValue(cityPath, data.localidade || "", { shouldDirty: true, shouldValidate: true });
+        // A UF vem primeiro; a cidade só é escolhida quando os municípios dessa UF carregarem
+        // (o select não aceita um valor que ainda não está entre as opções).
+        const uf = String(data.uf || "").toUpperCase();
+        setValue(statePath, uf, { shouldDirty: true, shouldValidate: true });
+        setValue(cityPath, "", { shouldDirty: true });
+        setPendingCepCity(uf ? { uf, ibge: String(data.ibge || ""), nome: data.localidade || "" } : null);
+        setCityNotice("");
         setValue(neighborhoodPath, data.bairro || "", { shouldDirty: true, shouldValidate: true });
         setValue(streetPath, data.logradouro || "", { shouldDirty: true, shouldValidate: true });
         setValue(verifiedPath, Boolean(data.logradouro), { shouldDirty: true, shouldValidate: true });
+        streetFromCepRef.current = Boolean(data.logradouro);
+        cepCityRef.current = uf
+          ? { uf, ibge: String(data.ibge || ""), nome: data.localidade || "", street: data.logradouro || "" }
+          : null;
         setStreetSearch(data.logradouro || "");
         setStreetResults([]);
-        setCepStatus(data.logradouro ? "CEP confirmado pelo ViaCEP." : "CEP confirmado; pesquise a rua para validá-la.");
+        setStreetStatus("");
+        setCepStatus(data.logradouro ? "CEP confirmado pelo ViaCEP." : "CEP confirmado. Este CEP não informa a rua: pesquise a rua para confirmá-la.");
       })
       .catch((error) => {
         if (error.name !== "AbortError") setCepStatus("Não foi possível consultar o CEP agora.");
@@ -106,14 +138,76 @@ export default function ShippingAddressFields({ register, setValue, watch, error
     return () => controller.abort();
   }, [postalCode, setValue, cityPath, neighborhoodPath, statePath, streetPath, verifiedPath]);
 
+  // Quando os municípios da UF ficam prontos: aplica a cidade do CEP (pelo código IBGE, com
+  // reserva pelo nome normalizado) ou reaplica a cidade já salva para o select exibi-la.
+  useEffect(() => {
+    if (citiesStatus !== "ready" || !state || citiesUf !== state) return;
+
+    if (pendingCepCity) {
+      if (pendingCepCity.uf !== state) {
+        setPendingCepCity(null);
+        return;
+      }
+      const match =
+        cities.find((option) => pendingCepCity.ibge && option.id === pendingCepCity.ibge) ||
+        cities.find((option) => normalize(option.nome) === normalize(pendingCepCity.nome));
+      setPendingCepCity(null);
+      if (match) {
+        setValue(cityPath, match.nome, { shouldDirty: true, shouldValidate: true });
+        setCityNotice("");
+      } else {
+        setValue(cityPath, "", { shouldDirty: true });
+        setCityNotice("Não encontramos a cidade deste CEP na lista. Escolha a cidade abaixo.");
+      }
+      return;
+    }
+
+    const current = watch(cityPath);
+    if (!current) return;
+    const match = cities.find((option) => normalize(option.nome) === normalize(current));
+    if (match) setValue(cityPath, match.nome, { shouldValidate: false });
+  }, [cities, citiesStatus, citiesUf, cityPath, pendingCepCity, setValue, state, watch]);
+
   useEffect(() => {
     setStreetSearch(street);
   }, [street]);
 
   const invalidateStreet = () => {
+    streetFromCepRef.current = false;
     setValue(verifiedPath, false, { shouldDirty: true, shouldValidate: true });
     setStreetResults([]);
     setStreetStatus("");
+  };
+
+  // A cidade escolhida à mão é a mesma do último CEP (pelo código IBGE ou pelo nome)?
+  const isCepCity = (cityName) => {
+    const cep = cepCityRef.current;
+    if (!cep || !cityName || cep.uf !== state) return false;
+    const option = cities.find((item) => item.nome === cityName);
+    return Boolean((cep.ibge && option?.id === cep.ibge) || normalize(cityName) === normalize(cep.nome));
+  };
+
+  const handleCityChange = (event) => {
+    const cityName = event.target.value;
+    const cep = cepCityRef.current;
+    if (isCepCity(cityName)) {
+      setCityNotice("");
+      // Voltou para a cidade do CEP com a rua do CEP ainda no campo: a rua volta a valer.
+      if (cep.street && watch(streetPath) === cep.street) {
+        setValue(verifiedPath, true, { shouldDirty: true, shouldValidate: true });
+        streetFromCepRef.current = true;
+        setStreetSearch(cep.street);
+        setStreetResults([]);
+        setStreetStatus("");
+      }
+      return;
+    }
+    invalidateStreet();
+    setCityNotice(
+      cep && cityName
+        ? `A cidade escolhida é diferente da cidade do CEP (${cep.nome}). Pesquise a rua novamente para confirmá-la.`
+        : "",
+    );
   };
 
   const postalCodeRegistration = register(postalCodePath, {
@@ -126,6 +220,10 @@ export default function ShippingAddressFields({ register, setValue, watch, error
         setValue(neighborhoodPath, "", { shouldDirty: true, shouldValidate: true });
         setValue(cityPath, "", { shouldDirty: true, shouldValidate: true });
         setValue(statePath, "", { shouldDirty: true, shouldValidate: true });
+        streetFromCepRef.current = false;
+        cepCityRef.current = null;
+        setPendingCepCity(null);
+        setCityNotice("");
         setCepStatus("");
       }
     },
@@ -214,6 +312,7 @@ export default function ShippingAddressFields({ register, setValue, watch, error
                   <button type="button" onClick={() => {
                     setValue(streetPath, result.address.road, { shouldDirty: true, shouldValidate: true });
                     setValue(verifiedPath, true, { shouldDirty: true, shouldValidate: true });
+                    streetFromCepRef.current = false;
                     const neighborhood = result.address.suburb || result.address.neighbourhood || result.address.quarter;
                     if (neighborhood) setValue(neighborhoodPath, neighborhood, { shouldDirty: true, shouldValidate: true });
                     setStreetResults([]);
@@ -249,10 +348,11 @@ export default function ShippingAddressFields({ register, setValue, watch, error
         <div>
           <label htmlFor={`${prefix}-city`} className="mb-1 block text-[10px] text-slate-400">CIDADE</label>
           <select id={`${prefix}-city`} autoComplete="address-level2" disabled={!state || citiesStatus !== "ready"}
-            {...register(cityPath, { onChange: invalidateStreet })} className={selectClass}>
+            {...register(cityPath, { onChange: handleCityChange })} className={selectClass}>
             <option value="">{citiesStatus === "loading" ? "CARREGANDO CIDADES..." : "SELECIONE A CIDADE"}</option>
-            {cities.map((name) => <option key={name} value={name}>{name}</option>)}
+            {cities.map((option) => <option key={option.id} value={option.nome}>{option.nome}</option>)}
           </select>
+          {cityNotice && <p role="status" className="mt-1 text-xs text-neon-amber">{cityNotice}</p>}
           {citiesStatus === "error" && (
             <button type="button" onClick={() => setRetryCities((attempt) => attempt + 1)} className="mt-1 text-[10px] text-neon-pink">
               Não foi possível carregar. Tentar novamente
@@ -265,6 +365,8 @@ export default function ShippingAddressFields({ register, setValue, watch, error
           <select id={`${prefix}-state`} autoComplete="address-level1" {...register(statePath, {
             onChange: () => {
               setValue(cityPath, "", { shouldDirty: true, shouldValidate: true });
+              setPendingCepCity(null);
+              setCityNotice("");
               invalidateStreet();
             },
           })} className={selectClass}>

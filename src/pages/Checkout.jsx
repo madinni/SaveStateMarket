@@ -7,6 +7,15 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { ordersApi } from "../services/api";
 import { formatShippingAddress, hasShippingAddress } from "../utils/address";
+import { notify } from "../utils/toast";
+
+// Orientação ao comprador depois do pagamento aprovado.
+const NEXT_STEPS = [
+  "Acompanhe a compra em MINHAS COMPRAS, no seu perfil. O vendedor recebe o seu endereço e prepara o envio.",
+  "Ao receber, confira a mídia, a caixa e o manual: tudo o que o anúncio informava deve estar no pacote.",
+  "Fotografe ou grave a abertura do pacote. As imagens comprovam o estado em que o item chegou.",
+  "Se algo não bater com o anúncio, abra um ticket no suporte com as fotos. A equipe analisa e orienta o reembolso.",
+];
 
 const formatBRL = (amount) =>
   Number(amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -49,6 +58,7 @@ export default function Checkout() {
         if (latestOrder.status === "approved") {
           window.clearInterval(intervalId);
           setPaymentApproved(true);
+          notify.success("Pagamento aprovado.");
           clearCart();
           // Os anúncios vendidos já foram retirados do catálogo pelo servidor.
           queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -93,6 +103,7 @@ export default function Checkout() {
       setOrderStatus(createdOrder.status);
     } catch (error) {
       setActionError(error.message || "Não foi possível registrar o pedido.");
+      notify.error(error.message || "Não foi possível registrar o pedido.");
     } finally {
       setIsCreatingOrder(false);
     }
@@ -115,6 +126,7 @@ export default function Checkout() {
       await ordersApi.update(order.id, { status: "approved" });
     } catch (error) {
       setActionError(error.message || "Não foi possível simular a aprovação.");
+      notify.error(error.message || "Não foi possível simular a aprovação.");
     } finally {
       setIsSimulatingApproval(false);
     }
@@ -151,7 +163,28 @@ export default function Checkout() {
             <h1 className="text-lg font-black text-white">PAGAMENTO APROVADO</h1>
             <p className="text-xs text-slate-300">Pagamento realizado com sucesso! O carrinho foi esvaziado e os anúncios foram removidos do catálogo.</p>
             <p className="font-pixel text-xl text-neon-mint">{formatBRL(order.total)}</p>
-            <Link to="/" className="inline-block px-4 py-2 bg-neon-mint text-noir-950 text-xs font-black">VOLTAR AO CATÁLOGO</Link>
+
+            <div className="border border-slate-700 bg-noir-950 p-4 text-left space-y-2">
+              <h2 className="text-xs font-bold text-neon-cyan">PRÓXIMOS PASSOS</h2>
+              <ol className="list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-300">
+                {NEXT_STEPS.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+              <p className="text-xs text-slate-400">
+                Problema com a entrega?{" "}
+                <Link to="/support" className="text-neon-cyan underline">Abrir ticket de suporte</Link>
+                {" "}(informe o número do pedido {order.id}).
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Link to={`/profile?pedido=${encodeURIComponent(order.id)}`}
+                className="inline-flex min-h-[40px] items-center justify-center px-4 py-2 border border-neon-cyan text-neon-cyan text-xs font-black hover:bg-neon-cyan/10">
+                VER MINHA COMPRA
+              </Link>
+              <Link to="/" className="inline-flex min-h-[40px] items-center justify-center px-4 py-2 bg-neon-mint text-noir-950 text-xs font-black">
+                VOLTAR AO CATÁLOGO
+              </Link>
+            </div>
           </section>
         ) : order ? (
           <section className="bg-noir-900 border-2 border-neon-cyan p-5 chamfer-box space-y-4">

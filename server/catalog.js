@@ -5,7 +5,7 @@ import { Router } from "express";
 import { z } from "zod";
 import * as store from "./store.js";
 import { exigeJwt, exigeAdmin } from "./auth.js";
-import { fail, parse, sameId, now } from "./http.js";
+import { fail, parse, sameId, now, exigeGravado } from "./http.js";
 import { urlSegura } from "./schemas.js";
 
 const router = Router();
@@ -96,7 +96,7 @@ router.patch("/games/:id", exigeJwt, exigeAdmin, async (req, res) => {
   await exigeJogoUnico(title, platform, game.id);
 
   const linked = await linkedProducts(game); // antes de alterar o jogo
-  const updated = await store.update("games", game.id, { ...body, updated_at: now() });
+  const updated = exigeGravado(await store.update("games", game.id, { ...body, updated_at: now() }), "Jogo");
   // O anúncio guarda uma cópia de título e plataforma: mantém tudo coerente com o catálogo.
   for (const product of linked) await store.update("products", product.id, { game_id: game.id, title, platform });
   res.json(updated);
@@ -197,9 +197,11 @@ async function resolveReference(title) {
     fail(502, "Benchmark externo indisponível no momento.");
   }
   const record = { ...data, ref_key: key, title, fetched_at: now() };
-  return cached
-    ? await store.update("price_references", cached.id, record)
-    : await store.insert("price_references", { ...record, id: store.newId("ref-") });
+  // #44: se o cache foi apagado no meio (update → null), grava um registro novo.
+  return (
+    (cached && (await store.update("price_references", cached.id, record))) ||
+    (await store.insert("price_references", { ...record, id: store.newId("ref-") }))
+  );
 }
 
 function lookup(title) {
@@ -253,27 +255,28 @@ router.post("/price_references", exigeJwt, exigeAdmin, async (req, res) => {
     fetched_at: now(),
   };
   const cached = (await store.find("price_references", (r) => r.ref_key === key))[0];
-  if (cached) return res.json(await store.update("price_references", cached.id, record));
+  // #44: se a referência sumiu entre a busca e o update (null), segue para criar uma nova (201).
+  const atualizada = cached ? await store.update("price_references", cached.id, record) : null;
+  if (atualizada) return res.json(atualizada);
   res.status(201).json(await store.insert("price_references", { ...record, id: store.newId("ref-") }));
 });
 
 router.patch("/price_references/:id", exigeJwt, exigeAdmin, async (req, res) => {
   const ref = await exigeItem("price_references", req.params.id, "Referência");
   const body = parse(manualReferenceUpdateSchema, req.body);
-  res.json(
-    await store.update("price_references", ref.id, {
-      source: "MANUAL",
-      found: true,
-      matched_title: ref.title,
-      source_game_id: null,
-      steam_app_id: null,
-      price_usd: null,
-      usd_brl: null,
-      fx_estimated: false,
-      price_brl: Math.round(body.price_brl * 100) / 100,
-      fetched_at: now(),
-    }),
-  );
+  const updated = await store.update("price_references", ref.id, {
+    source: "MANUAL",
+    found: true,
+    matched_title: ref.title,
+    source_game_id: null,
+    steam_app_id: null,
+    price_usd: null,
+    usd_brl: null,
+    fx_estimated: false,
+    price_brl: Math.round(body.price_brl * 100) / 100,
+    fetched_at: now(),
+  });
+  res.json(exigeGravado(updated, "Referência"));
 });
 
 // Remove o override manual (ou um registro ruim); a próxima consulta volta à CheapShark.

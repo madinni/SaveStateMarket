@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import pg from "pg";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "savestate-"));
 if (!process.env.TEST_DATABASE_URL) throw new Error("Defina TEST_DATABASE_URL para executar os testes com PostgreSQL.");
@@ -827,4 +828,268 @@ test("#18: remoção do anúncio pelo dono ou pelo admin também preserva a nego
     assert.equal(salva.product_title, "GTA VI");
     assert.ok((await store.find("messages", (m) => m.offer_id === offer.body.id)).length >= 1);
   }
+});
+
+// #39: aceitar × contrapropor/recusar em paralelo. A ordem de chegada é imprevisível, então o
+// teste roda várias rodadas e exige: exatamente um 200 e um 409, estado final igual ao do
+// vencedor (aceite preserva o valor aceito) e uma única mensagem de sistema por transição.
+test("#39: corrida aceitar × contrapropor e aceitar × recusar dá um 200 e um 409", async () => {
+  const vend = await signup("Vend39");
+  const comp = await signup("Comp39");
+  const vitorias = { ACCEPTED: 0, outro: 0 };
+  for (const rival of ["COUNTER_OFFER", "REJECTED"]) {
+    for (let rodada = 0; rodada < 5; rodada += 1) {
+      const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 260 } });
+      const offer = await call("POST", "/offers", { token: comp.token, body: { product_id: prod.body.id, offered_price: 220 } });
+      assert.equal(offer.status, 201);
+      const rivalBody = rival === "COUNTER_OFFER" ? { status: rival, offered_price: 150 } : { status: rival };
+      const [aceite, outro] = await Promise.all([
+        call("PATCH", `/offers/${offer.body.id}`, { token: vend.token, body: { status: "ACCEPTED" } }),
+        call("PATCH", `/offers/${offer.body.id}`, { token: vend.token, body: rivalBody }),
+      ]);
+      assert.deepEqual([aceite.status, outro.status].sort(), [200, 409], `${rival} rodada ${rodada}`);
+      const final = await store.get("offers", offer.body.id);
+      if (aceite.status === 200) {
+        vitorias.ACCEPTED += 1;
+        assert.equal(final.status, "ACCEPTED");
+        assert.equal(final.offered_price, 220);
+      } else {
+        vitorias.outro += 1;
+        assert.equal(final.status, rival);
+      }
+      const sistema = await store.find("messages", (m) => m.offer_id === offer.body.id && m.sender_id === "SYSTEM");
+      assert.equal(sistema.length, 1, "quem perdeu a corrida não pode gerar mensagem de sistema");
+    }
+  }
+  assert.equal(vitorias.ACCEPTED + vitorias.outro, 10);
+});
+
+test("#39: updateWhere só grava se a condição ainda vale; negociação aceita não é sobrescrita", async () => {
+  const vend = await signup("Vend39b");
+  const comp = await signup("Comp39b");
+  const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 300 } });
+  const offer = await call("POST", "/offers", { token: comp.token, body: { product_id: prod.body.id, offered_price: 220 } });
+  const ok = await call("PATCH", `/offers/${offer.body.id}`, { token: vend.token, body: { status: "ACCEPTED" } });
+  assert.equal(ok.status, 200);
+  // Simula quem leu a oferta antes do aceite: a gravação condicional não acontece.
+  const perdeu = await store.updateWhere(
+    "offers",
+    offer.body.id,
+    { status: "COUNTER_OFFER", offered_price: 150 },
+    { status: { notIn: ["ACCEPTED", "REJECTED"] } },
+  );
+  assert.equal(perdeu, null);
+  const final = await store.get("offers", offer.body.id);
+  assert.equal(final.status, "ACCEPTED");
+  assert.equal(final.offered_price, 220);
+  // Valor com aspas/SQL é só parâmetro: não casa nada e não quebra a consulta.
+  assert.equal(await store.updateWhere("offers", offer.body.id, { x: 1 }, { "status' OR '1'='1": { eq: "' OR 1=1 --" } }), null);
+  const casou = await store.updateWhere("offers", offer.body.id, { nota: "ok" }, { status: { in: ["ACCEPTED"] } });
+  assert.equal(casou.nota, "ok");
+  // Outra parte agiu entre a leitura e a escrita (negociação aberta): 409 com mensagem própria.
+  const prod2 = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 300 } });
+  const aberta = await call("POST", "/offers", { token: comp.token, body: { product_id: prod2.body.id, offered_price: 200 } });
+  const [a, b] = await Promise.all([
+    call("PATCH", `/offers/${aberta.body.id}`, { token: vend.token, body: { status: "COUNTER_OFFER", offered_price: 280 } }),
+    call("PATCH", `/offers/${aberta.body.id}`, { token: vend.token, body: { status: "COUNTER_OFFER", offered_price: 270 } }),
+  ]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  const perdedor = a.status === 409 ? a : b;
+  assert.equal(perdedor.body.message, "A negociação foi atualizada pela outra parte. Recarregue e tente de novo.");
+});
+
+// #40: duas avaliações iguais em paralelo → 201 + 409 e uma só gravada (índice único).
+test("#40: corrida de avaliações dá 201 e 409; só uma é gravada e a reputação usa ela", async () => {
+  const vend = await signup("Vend40");
+  const comp = await signup("Comp40");
+  const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 90 } });
+  const order = await call("POST", "/orders", { token: comp.token, body: { items: [{ product_id: prod.body.id, quantity: 1 }] } });
+  await call("PATCH", `/orders/${order.body.id}`, { token: comp.token, body: { status: "approved" } });
+
+  const respostas = await Promise.all(
+    [5, 1].map((rating) =>
+      call("POST", "/profile_reviews", { token: comp.token, body: { profile_id: vend.id, rating, comment: "Corrida." } }),
+    ),
+  );
+  assert.deepEqual(respostas.map((r) => r.status).sort(), [201, 409]);
+  const conflito = respostas.find((r) => r.status === 409);
+  assert.equal(conflito.body.message, "Você já avaliou este operador. Edite a avaliação existente.");
+  const gravadas = await store.find("profile_reviews", (r) => r.profile_id === vend.id && r.author_id === comp.id);
+  assert.equal(gravadas.length, 1);
+  const vencedora = respostas.find((r) => r.status === 201).body;
+  assert.equal((await store.get("profiles", vend.id)).reputation, vencedora.rating);
+
+  // O índice também barra gravação direta duplicada.
+  await assert.rejects(
+    store.insert("profile_reviews", { id: "REV-dup40", profile_id: vend.id, author_id: comp.id, rating: 3 }),
+    (error) => error.code === "23505" && error.constraint === store.REVIEW_UNIQUE_INDEX,
+  );
+});
+
+// ---------------------------------------------------------------- #41 e #44
+const tabela = `"${process.env.DB_SCHEMA}".savestate_records`;
+
+// #41: três denúncias iguais em paralelo → um 201 e dois 409; uma só gravada (índice parcial).
+test("#41: denúncias em paralelo dão 201 + 409 + 409 e só uma fica gravada", async () => {
+  const vend = await signup("Vend41");
+  const denun = await signup("Denun41");
+  const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 70 } });
+  assert.equal(prod.status, 201);
+
+  const respostas = await Promise.all(
+    [1, 2, 3].map(() => call("POST", "/reports", { token: denun.token, body: { product_id: prod.body.id, reason: "GOLPE" } })),
+  );
+  assert.deepEqual(respostas.map((r) => r.status).sort(), [201, 409, 409]);
+  for (const r of respostas.filter((x) => x.status === 409)) assert.equal(r.body.message, "Você já denunciou este anúncio.");
+  const abertas = () =>
+    store.find("reports", (r) => r.product_id === prod.body.id && r.reporter_id === denun.id && r.status === "OPEN");
+  assert.equal((await abertas()).length, 1);
+  const primeira = respostas.find((r) => r.status === 201).body;
+
+  // O índice também barra gravação direta de outra OPEN igual.
+  await assert.rejects(
+    store.insert("reports", { id: "RPT-DUP41", product_id: prod.body.id, reporter_id: denun.id, status: "OPEN" }),
+    (error) => error.code === "23505" && error.constraint === store.REPORT_UNIQUE_INDEX,
+  );
+
+  // Depois que o admin descarta, nova denúncia volta a ser permitida (e em paralelo: 201 + 409).
+  const descartada = await call("PATCH", `/admin/reports/${primeira.id}`, { token: admin.token, body: { status: "DISMISSED" } });
+  assert.equal(descartada.status, 200);
+  const segunda = await Promise.all(
+    [1, 2].map(() => call("POST", "/reports", { token: denun.token, body: { product_id: prod.body.id, reason: "OUTRO" } })),
+  );
+  assert.deepEqual(segunda.map((r) => r.status).sort(), [201, 409]);
+  assert.equal((await abertas()).length, 1);
+  assert.equal((await store.find("reports", (r) => r.product_id === prod.body.id && r.reporter_id === denun.id)).length, 2);
+
+  // RESOLVED_REMOVED também sai do índice: outra OPEN do mesmo par pode ser gravada.
+  const aberta = (await abertas())[0];
+  await store.update("reports", aberta.id, { status: "RESOLVED_REMOVED" });
+  const outra = await store.insert("reports", { id: "RPT-POS41", product_id: prod.body.id, reporter_id: denun.id, status: "OPEN" });
+  assert.equal(outra.status, "OPEN");
+  await store.remove("reports", "RPT-POS41");
+});
+
+test("#41: duplicatas OPEN antigas viram DISMISSED (a mais antiga fica aberta) antes de criar o índice", async () => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(`DROP INDEX "${process.env.DB_SCHEMA}".${store.REPORT_UNIQUE_INDEX}`);
+    for (const id of ["RPT-LEG1", "RPT-LEG2", "RPT-LEG3"]) {
+      await store.insert("reports", { id, product_id: "prod-legado", reporter_id: "user-legado", status: "OPEN" });
+    }
+    await store.insert("reports", { id: "RPT-LEG4", product_id: "prod-legado", reporter_id: "user-legado", status: "DISMISSED" });
+  } finally {
+    await client.end();
+  }
+  await store.ensureReportUniqueIndex();
+
+  const legado = await store.find("reports", (r) => r.product_id === "prod-legado");
+  assert.equal(legado.length, 4, "nenhuma denúncia é apagada");
+  const porId = Object.fromEntries(legado.map((r) => [r.id, r]));
+  assert.equal(porId["RPT-LEG1"].status, "OPEN");
+  for (const id of ["RPT-LEG2", "RPT-LEG3"]) {
+    assert.equal(porId[id].status, "DISMISSED");
+    assert.equal(porId[id].duplicate_of, "RPT-LEG1");
+    assert.equal(porId[id].resolved_by, "SISTEMA");
+    assert.ok(porId[id].resolved_at);
+  }
+  assert.equal(porId["RPT-LEG4"].duplicate_of, undefined);
+
+  // Idempotente, e o índice voltou a existir.
+  await store.ensureReportUniqueIndex();
+  assert.equal((await store.get("reports", "RPT-LEG1")).status, "OPEN");
+  await assert.rejects(
+    store.insert("reports", { id: "RPT-LEG5", product_id: "prod-legado", reporter_id: "user-legado", status: "OPEN" }),
+    (error) => error.code === "23505" && error.constraint === store.REPORT_UNIQUE_INDEX,
+  );
+  await store.removeWhere("reports", (r) => r.product_id === "prod-legado");
+});
+
+// #44: trava a linha numa transação à parte, dispara a requisição (que lê o registro e fica
+// parada no UPDATE), apaga a linha e confirma. O UPDATE da API então não acha nada (null):
+// a rota precisa responder 404, não 500.
+async function apagaNoMeio(collection, id, requisicao) {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT 1 FROM ${tabela} WHERE collection = $1 AND id = $2 FOR UPDATE`, [collection, String(id)]);
+    const pendente = requisicao();
+    // Espera o UPDATE da API ficar bloqueado na trava desta transação.
+    let bloqueado = false;
+    for (let i = 0; i < 200 && !bloqueado; i += 1) {
+      // Dentro de uma transação o pg_stat_activity fica congelado: limpa o retrato a cada volta.
+      await client.query("SELECT pg_stat_clear_snapshot()");
+      const { rows } = await client.query(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE $1 AND pid <> pg_backend_pid()`,
+        [`UPDATE ${tabela}%`],
+      );
+      bloqueado = rows[0].n > 0;
+      if (!bloqueado) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (!bloqueado) {
+      await client.query("ROLLBACK");
+      assert.fail(`o UPDATE da API deveria estar esperando a trava: ${JSON.stringify(await pendente)}`);
+    }
+    await client.query(`DELETE FROM ${tabela} WHERE collection = $1 AND id = $2`, [collection, String(id)]);
+    await client.query("COMMIT");
+    return await pendente;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+test("#44: helper exigeGravado transforma null em 404 com a mensagem do recurso", async () => {
+  const { exigeGravado, HttpError } = await import("../http.js");
+  assert.throws(
+    () => exigeGravado(null, "Anúncio"),
+    (error) => error instanceof HttpError && error.status === 404 && error.message === "Anúncio não encontrado.",
+  );
+  assert.deepEqual(exigeGravado({ id: 1 }, "Anúncio"), { id: 1 });
+});
+
+test("#44: PATCH de anúncio apagado entre a leitura e a gravação responde 404 (não 500)", async () => {
+  const vend = await signup("Vend44");
+  const prod = await call("POST", "/products", { token: vend.token, body: { game_id: "game-002", price: 80 } });
+  assert.equal(prod.status, 201);
+  const res = await apagaNoMeio("products", prod.body.id, () =>
+    call("PATCH", `/products/${prod.body.id}`, { token: vend.token, body: { price: 60 } }),
+  );
+  assert.equal(res.status, 404);
+  assert.equal(res.body.message, "Anúncio não encontrado.");
+});
+
+test("#44: outras rotas que usam o retorno do update também respondem 404", async () => {
+  // Notificação do próprio usuário
+  await store.insert("notifications", { id: "NTF-44", user_id: ana.id, type: "X", title: "t", body: "b", read: false });
+  const nota = await apagaNoMeio("notifications", "NTF-44", () =>
+    call("PATCH", "/notifications/NTF-44", { token: ana.token, body: { read: true } }),
+  );
+  assert.equal(nota.status, 404);
+  assert.equal(nota.body.message, "Notificação não encontrado.");
+
+  // Denúncia descartada pelo admin
+  await store.insert("reports", { id: "RPT-44", product_id: "prod-44", reporter_id: ana.id, status: "OPEN" });
+  const rep = await apagaNoMeio("reports", "RPT-44", () =>
+    call("PATCH", "/admin/reports/RPT-44", { token: admin.token, body: { status: "DISMISSED" } }),
+  );
+  assert.equal(rep.status, 404);
+  assert.equal(rep.body.message, "Denúncia não encontrado.");
+
+  // Ticket do próprio usuário
+  const ticket = await call("POST", "/tickets", {
+    token: ana.token,
+    body: { subject: "Teste do 44", category: "OUTRO", priority: "LOW", description: "Ticket que some no meio do PATCH." },
+  });
+  assert.equal(ticket.status, 201, JSON.stringify(ticket.body));
+  const tck = await apagaNoMeio("tickets", ticket.body.id, () =>
+    call("PATCH", `/tickets/${ticket.body.id}`, { token: ana.token, body: { subject: "Assunto novo do 44" } }),
+  );
+  assert.equal(tck.status, 404);
+  assert.equal(tck.body.message, "Ticket não encontrado.");
 });

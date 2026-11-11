@@ -24,12 +24,14 @@ export function alertMatches(alert, product) {
 }
 
 async function fire(alert, product) {
-  await store.update("price_alerts", alert.id, {
+  // #44: alerta apagado no meio (update → null) não gera notificação.
+  const disparado = await store.update("price_alerts", alert.id, {
     active: false,
     triggered_at: now(),
     triggered_price: Number(product.price),
     triggered_product_id: product.id,
   });
+  if (!disparado) return;
   await notify(alert.user_id, {
     type: "PRICE_ALERT",
     title: `Alerta de preço: ${product.title}`,

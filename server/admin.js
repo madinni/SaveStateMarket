@@ -4,7 +4,7 @@
 import { Router } from "express";
 import * as store from "./store.js";
 import { exigeAdmin } from "./auth.js";
-import { fail, parse, sameId, now, applyQuery } from "./http.js";
+import { fail, parse, sameId, now, applyQuery, exigeGravado } from "./http.js";
 import { notify } from "./notify.js";
 import { exigeItem, removeProductCascade, brl, semSegredoTicket } from "./resources.js";
 import * as S from "./schemas.js";
@@ -32,7 +32,7 @@ router.patch("/admin/tickets/:id", async (req, res) => {
     patch.replied_at = patch.updated_at;
     patch.replied_by = req.user.id;
   }
-  const updated = semSegredoTicket(await store.update("tickets", ticket.id, patch));
+  const updated = semSegredoTicket(exigeGravado(await store.update("tickets", ticket.id, patch), "Ticket"));
 
   // Visitante (GUEST_SESSION) não tem conta: o admin usa o contact_email exibido na tela.
   if (ticket.author_id && ticket.author_id !== "GUEST_SESSION") {
@@ -59,11 +59,10 @@ router.patch("/admin/refunds/:id/liberar", async (req, res) => {
   const refund = await exigeItem("refunds", req.params.id, "Reembolso");
   if (refund.status !== "paid") fail(409, "Só é possível liberar reembolsos já confirmados pelo vendedor.");
 
-  const updated = await store.update("refunds", refund.id, {
-    status: "released",
-    released_at: now(),
-    released_by: req.user.id,
-  });
+  const updated = exigeGravado(
+    await store.update("refunds", refund.id, { status: "released", released_at: now(), released_by: req.user.id }),
+    "Reembolso",
+  );
   const emAberto = await store.find(
     "refunds",
     (r) => sameId(r.seller_id, refund.seller_id) && (r.status === "pending" || r.status === "paid"),
@@ -103,9 +102,8 @@ router.patch("/admin/reports/:id", async (req, res) => {
   const report = await exigeItem("reports", req.params.id, "Denúncia");
   parse(S.adminReportUpdateSchema, req.body);
   if (report.status !== "OPEN") fail(409, "Esta denúncia já foi resolvida.");
-  res.json(
-    await store.update("reports", report.id, { status: "DISMISSED", resolved_at: now(), resolved_by: req.user.id }),
-  );
+  const updated = await store.update("reports", report.id, { status: "DISMISSED", resolved_at: now(), resolved_by: req.user.id });
+  res.json(exigeGravado(updated, "Denúncia"));
 });
 
 // UC15: o admin remove o anúncio (cascata de negociações e mensagens) e fecha as denúncias abertas dele.

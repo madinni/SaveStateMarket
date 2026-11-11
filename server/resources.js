@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import * as store from "./store.js";
 import { exigeJwt, jwtOpcional, isBlocked } from "./auth.js";
-import { fail, parse, sameId, now, applyQuery } from "./http.js";
+import { fail, parse, sameId, now, applyQuery, exigeGravado } from "./http.js";
 import { notify } from "./notify.js";
 import { triggerAlerts, checkExistingListings, normalize } from "./alerts.js";
 import { createDemoPixPayload } from "./pix.js";
@@ -92,7 +92,7 @@ router.patch("/products/:id", exigeJwt, async (req, res) => {
   exigeDono(isSeller(product, req.user), "Apenas o anunciante pode alterar este anúncio.");
   const previousPrice = Number(product.price);
   const body = await productFromBody(parse(S.productUpdateSchema, req.body), product);
-  const updated = await store.update("products", product.id, { ...body, updated_at: now() });
+  const updated = exigeGravado(await store.update("products", product.id, { ...body, updated_at: now() }), "Anúncio");
   if (Number(updated.price) < previousPrice) await triggerAlerts(updated);
   res.json(updated);
 });
@@ -136,6 +136,7 @@ async function hasApprovedTrade(userId, otherId) {
   )).length > 0;
 }
 const NO_TRADE = "Você só pode avaliar usuários com quem concluiu uma transação.";
+const REVIEW_DUPLICATE = "Você já avaliou este operador. Edite a avaliação existente.";
 
 router.get("/profile_reviews", async (req, res) => res.json(applyQuery(await store.list("profile_reviews"), req.query)));
 
@@ -148,16 +149,24 @@ router.post("/profile_reviews", exigeJwt, async (req, res) => {
     "profile_reviews",
     (r) => sameId(r.profile_id, body.profile_id) && reviewAuthor(r, req.user),
   );
-  if (already.length) fail(409, "Você já avaliou este operador. Edite a avaliação existente.");
+  if (already.length) fail(409, REVIEW_DUPLICATE);
 
-  const created = await store.insert("profile_reviews", {
-    ...body,
-    id: store.newId("REV-"),
-    author_id: req.user.id,
-    author_handle: handleOf(req.user),
-    badge: "[VERIFIED_TRADE]",
-    created_at: now(),
-  });
+  // #40: a checagem acima não cobre duas requisições em paralelo; o índice único
+  // (author_id, profile_id) garante uma só avaliação, e o 23505 dele vira o mesmo 409.
+  let created;
+  try {
+    created = await store.insert("profile_reviews", {
+      ...body,
+      id: store.newId("REV-"),
+      author_id: req.user.id,
+      author_handle: handleOf(req.user),
+      badge: "[VERIFIED_TRADE]",
+      created_at: now(),
+    });
+  } catch (error) {
+    if (error.code === "23505" && error.constraint === store.REVIEW_UNIQUE_INDEX) fail(409, REVIEW_DUPLICATE);
+    throw error;
+  }
   await syncReputation(body.profile_id);
   await notify(body.profile_id, {
     type: "REVIEW",
@@ -175,19 +184,30 @@ router.patch("/profile_reviews/:id", exigeJwt, async (req, res) => {
   // antes desta regra, só podem ser editadas se houver transação concluída.
   if (!await hasApprovedTrade(req.user.id, review.profile_id)) fail(403, NO_TRADE);
   const body = parse(S.reviewUpdateSchema, req.body);
-  const updated = await store.update("profile_reviews", review.id, {
-    ...body,
-    author_id: req.user.id,
-    badge: "[UPDATED_REVIEW]",
-    updated_at: now(),
-  });
+  // Avaliação legada (só author_handle) ganha author_id aqui; se a pessoa já tiver outra
+  // avaliação do mesmo perfil com author_id, o índice único recusa (409 em vez de 500).
+  let updated;
+  try {
+    updated = await store.update("profile_reviews", review.id, {
+      ...body,
+      author_id: req.user.id,
+      badge: "[UPDATED_REVIEW]",
+      updated_at: now(),
+    });
+  } catch (error) {
+    if (error.code === "23505" && error.constraint === store.REVIEW_UNIQUE_INDEX) fail(409, REVIEW_DUPLICATE);
+    throw error;
+  }
+  exigeGravado(updated, "Avaliação");
   await syncReputation(review.profile_id);
   res.json(updated);
 });
 
 // ---------------------------------------------------------------- Negociações (ofertas)
 const isParty = (offer, user) => sameId(offer.buyer_id, user.id) || sameId(offer.seller_id, user.id);
-const isClosed = (offer) => offer.status === "ACCEPTED" || offer.status === "REJECTED";
+const CLOSED_STATUSES = ["ACCEPTED", "REJECTED"];
+const isClosed = (offer) => CLOSED_STATUSES.includes(offer.status);
+const OFFER_CLOSED = "Esta negociação já foi encerrada.";
 
 function systemMessage(offerId, text) {
   return store.insert("messages", {
@@ -245,7 +265,7 @@ router.post("/offers", exigeJwt, async (req, res) => {
 router.patch("/offers/:id", exigeJwt, async (req, res) => {
   const offer = await exigeItem("offers", req.params.id, "Negociação");
   exigeDono(isParty(offer, req.user));
-  if (isClosed(offer)) fail(409, "Esta negociação já foi encerrada.");
+  if (isClosed(offer)) fail(409, OFFER_CLOSED);
   const { status, offered_price } = parse(S.offerUpdateSchema, req.body);
 
   const isBuyer = sameId(offer.buyer_id, req.user.id);
@@ -257,12 +277,27 @@ router.patch("/offers/:id", exigeJwt, async (req, res) => {
   }
   if (status === "COUNTER_OFFER" && !offered_price) fail(400, "Informe o valor da contraproposta.", "offered_price");
 
-  const updated = await store.update("offers", offer.id, {
-    status,
-    last_action_by: req.user.id,
-    updated_at: now(),
-    ...(status === "COUNTER_OFFER" ? { offered_price: Number(offered_price) } : {}),
-  });
+  // #39: a gravação só acontece se a oferta continua aberta E ninguém agiu desde a leitura
+  // (last_action_by igual ao lido), numa única instrução. Assim, aceitar × contrapropor/recusar
+  // em paralelo dá um 200 e um 409, e ninguém aceita a própria contraproposta por corrida.
+  // Mensagem de sistema e notificação só são gravadas por quem venceu.
+  const updated = await store.updateWhere(
+    "offers",
+    offer.id,
+    {
+      status,
+      last_action_by: req.user.id,
+      updated_at: now(),
+      ...(status === "COUNTER_OFFER" ? { offered_price: Number(offered_price) } : {}),
+    },
+    { status: { notIn: CLOSED_STATUSES }, last_action_by: { eq: offer.last_action_by ?? null } },
+  );
+  if (!updated) {
+    const current = await store.get("offers", offer.id);
+    if (!current) fail(404, "Negociação não encontrada.");
+    if (isClosed(current)) fail(409, OFFER_CLOSED);
+    fail(409, "A negociação foi atualizada pela outra parte. Recarregue e tente de novo.");
+  }
 
   const texts = {
     ACCEPTED: `[SISTEMA]: Proposta ACEITA por ${handleOf(req.user)}`,
@@ -446,7 +481,8 @@ router.patch("/tickets/:id", exigeJwt, async (req, res) => {
   exigeDono(ticketOwner(ticket, req.user));
   if (ticket.status !== "OPEN") fail(409, "Só tickets em aberto podem ser alterados.");
   const body = parse(S.ticketUpdateSchema, req.body);
-  res.json(semSegredoTicket(await store.update("tickets", ticket.id, { ...body, updated_at: now() })));
+  const updated = exigeGravado(await store.update("tickets", ticket.id, { ...body, updated_at: now() }), "Ticket");
+  res.json(semSegredoTicket(updated));
 });
 
 router.delete("/tickets/:id", exigeJwt, async (req, res) => {
@@ -470,7 +506,8 @@ router.post("/notifications", exigeJwt, () => fail(403, "Notificações são cri
 router.patch("/notifications/:id", exigeJwt, async (req, res) => {
   const item = await exigeItem("notifications", req.params.id, "Notificação");
   exigeDono(ownNotification(item, req.user));
-  res.json(await store.update("notifications", item.id, parse(S.notificationUpdateSchema, req.body)));
+  const body = parse(S.notificationUpdateSchema, req.body);
+  res.json(exigeGravado(await store.update("notifications", item.id, body), "Notificação"));
 });
 
 router.delete("/notifications/:id", exigeJwt, async (req, res) => {
@@ -521,9 +558,9 @@ router.patch("/price_alerts/:id", exigeJwt, async (req, res) => {
   if (reactivate) {
     Object.assign(patch, { active: true, triggered_at: null, triggered_price: null, triggered_product_id: null });
   }
-  const updated = await store.update("price_alerts", alert.id, patch);
+  const updated = exigeGravado(await store.update("price_alerts", alert.id, patch), "Alerta");
   if (updated.active) await checkExistingListings(updated);
-  res.json(await store.get("price_alerts", alert.id));
+  res.json((await store.get("price_alerts", alert.id)) ?? updated);
 });
 
 router.delete("/price_alerts/:id", exigeJwt, async (req, res) => {
@@ -607,7 +644,7 @@ router.patch("/orders/:id", exigeJwt, async (req, res) => {
   if (body.status !== "approved") return res.json(order);
   if (order.status !== "pending") fail(409, "Este pedido não está mais aguardando pagamento.");
 
-  const updated = await store.update("orders", order.id, { status: "approved", approved_at: now() });
+  const updated = exigeGravado(await store.update("orders", order.id, { status: "approved", approved_at: now() }), "Pedido");
   for (const item of order.items || []) await removeProductCascade(item.product_id);
   for (const sellerId of new Set(sellerIdsOf(order))) {
     const titles = order.items.filter((i) => sameId(i.seller_id, sellerId)).map((i) => i.title);
@@ -682,7 +719,7 @@ router.patch("/refunds/:id", exigeJwt, async (req, res) => {
 
   // Fluxo pending → paid → released: confirmar o pagamento NÃO desbloqueia a conta;
   // só o administrador libera (PATCH /admin/refunds/:id/liberar).
-  const updated = await store.update("refunds", refund.id, { status: "paid", paid_at: now() });
+  const updated = exigeGravado(await store.update("refunds", refund.id, { status: "paid", paid_at: now() }), "Reembolso");
   await notify(refund.buyer_id, {
     type: "REFUND",
     title: "Reembolso pago",
@@ -699,6 +736,8 @@ router.patch("/refunds/:id", exigeJwt, async (req, res) => {
 });
 
 // ---------------------------------------------------------------- Denúncias de anúncio
+const REPORT_DUPLICATE = "Você já denunciou este anúncio.";
+
 // Só usuário logado denuncia; não há GET público (a lista fica em /admin/reports).
 router.post("/reports", exigeJwt, async (req, res) => {
   const body = parse(S.reportCreateSchema, req.body);
@@ -708,9 +747,14 @@ router.post("/reports", exigeJwt, async (req, res) => {
     "reports",
     (r) => sameId(r.product_id, product.id) && sameId(r.reporter_id, req.user.id) && r.status === "OPEN",
   );
-  if (duplicada.length) fail(409, "Você já denunciou este anúncio.");
+  if (duplicada.length) fail(409, REPORT_DUPLICATE);
 
-  const created = await store.insert("reports", {
+  // #41: a checagem acima não cobre requisições em paralelo; o índice único parcial
+  // (reporter_id, product_id) WHERE status = 'OPEN' garante uma só denúncia aberta, e o
+  // 23505 dele vira o mesmo 409. Denúncia resolvida sai do índice: dá para denunciar de novo.
+  let created;
+  try {
+    created = await store.insert("reports", {
     id: store.newId("RPT-").toUpperCase(),
     product_id: product.id,
     // Retrato do anúncio: ele pode ser apagado depois.
@@ -723,7 +767,11 @@ router.post("/reports", exigeJwt, async (req, res) => {
     reporter_handle: handleOf(req.user),
     status: "OPEN",
     created_at: now(),
-  });
+    });
+  } catch (error) {
+    if (error.code === "23505" && error.constraint === store.REPORT_UNIQUE_INDEX) fail(409, REPORT_DUPLICATE);
+    throw error;
+  }
   res.status(201).json(created);
 });
 

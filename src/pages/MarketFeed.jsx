@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
+import PriceInput, { parsePrice } from "../components/PriceInput";
 import { useProducts } from "../hooks/useProducts";
 import { useMarketBenchmark } from "../hooks/usePriceReference";
 import { PLATFORMS } from "../schemas";
@@ -30,10 +31,10 @@ const EMPTY_FILTERS = {
 };
 
 // Valor digitado no campo de preço → número (ou null se vazio/inválido).
+// Campo vazio no máximo = "Sem limite".
 const toPrice = (value) => {
-  if (value === "" || value === null) return null;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  const n = parsePrice(value);
+  return n !== null && n >= 0 ? n : null;
 };
 
 const useDebouncedValue = (value, delay) => {
@@ -201,12 +202,12 @@ function FiltersPanel({ filters, setFilter, platforms, onClear, activeCount, pri
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label htmlFor="filter-min" className="block text-xs text-slate-400 mb-1">Mínimo</label>
-            <input id="filter-min" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0"
+            <PriceInput id="filter-min" placeholder="0"
               value={filters.minPrice} onChange={(e) => setFilter("minPrice", e.target.value)} className={priceInput} />
           </div>
           <div>
             <label htmlFor="filter-max" className="block text-xs text-slate-400 mb-1">Máximo</label>
-            <input id="filter-max" type="number" min="0" step="0.01" inputMode="decimal" placeholder="Sem limite"
+            <PriceInput id="filter-max" placeholder="Sem limite"
               value={filters.maxPrice} onChange={(e) => setFilter("maxPrice", e.target.value)} className={priceInput} />
           </div>
         </div>

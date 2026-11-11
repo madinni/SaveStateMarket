@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Header from "../components/Header";
 import FieldError from "../components/FieldError";
+import PriceInput from "../components/PriceInput";
 import { useAuth } from "../context/AuthContext";
 import {
   useOffers,
@@ -13,6 +14,12 @@ import {
   useDeleteOffer,
 } from "../hooks/useOffers";
 import { chatSchema, priceSchema } from "../schemas";
+import { notify } from "../utils/toast";
+
+const CLOSED_STATUSES = ["ACCEPTED", "REJECTED"];
+const CLOSED_MESSAGE = "Esta negociação já foi encerrada. O chat agora é somente leitura.";
+// Recusas do servidor (estado mudou, sem permissão, oferta sumiu): a tela volta a refletir o servidor.
+const REFUSAL_STATUSES = [400, 403, 404, 409];
 
 const BADGES = {
   ACCEPTED: ["[ACEITO]", "text-neon-mint bg-neon-mint/10 border-neon-mint"],
@@ -31,9 +38,11 @@ export default function NegotiationDesk() {
   const [selectedId, setSelectedId] = useState(null);
   const [showCounterModal, setShowCounterModal] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [counterError, setCounterError] = useState("");
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const chatEndRef = useRef(null);
 
-  const { data: allOffers = [], isLoading, isError } = useOffers();
+  const { data: allOffers = [], isLoading, isError, refetch: refetchOffers } = useOffers();
   const sendMessage = useSendMessage();
   const updateOffer = useUpdateOffer();
   const deleteOffer = useDeleteOffer();
@@ -71,8 +80,10 @@ export default function NegotiationDesk() {
     try {
       await deleteOffer.mutateAsync(selectedOffer.id);
       setSelectedId(null);
+      notify.success("Chat excluído.");
     } catch (err) {
       setActionError(err.message || "Não foi possível excluir o chat.");
+      notify.error(err.message || "Não foi possível excluir o chat.");
     }
   };
 
@@ -85,13 +96,63 @@ export default function NegotiationDesk() {
       chatForm.reset();
     } catch (err) {
       setActionError(err.message || "Não foi possível enviar a mensagem.");
+      notify.error(err.message || "Não foi possível enviar a mensagem.");
     }
+  };
+
+  // Busca o status atual da oferta no servidor (outra parte pode ter aceitado/recusado).
+  // Devolve true se a negociação continua aberta.
+  const confirmStillOpen = async () => {
+    const { data } = await refetchOffers();
+    const fresh = data?.find((o) => o.id === selectedOffer?.id);
+    if (!fresh) {
+      notify.error("Esta negociação não existe mais.");
+      return false;
+    }
+    if (CLOSED_STATUSES.includes(fresh.status)) {
+      notify.warning(CLOSED_MESSAGE);
+      return false;
+    }
+    return true;
+  };
+
+  const closeCounterModal = () => {
+    setShowCounterModal(false);
+    setCounterError("");
+    counterForm.reset();
+  };
+
+  const openCounterModal = async () => {
+    if (!selectedOffer || isClosed) return;
+    setActionError("");
+    setCheckingStatus(true);
+    try {
+      if (await confirmStillOpen()) {
+        setCounterError("");
+        setShowCounterModal(true);
+      }
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  const onSubmitCounter = async ({ price }) => {
+    setCounterError("");
+    if (!(await confirmStillOpen())) {
+      closeCounterModal();
+      return;
+    }
+    await changeOffer("COUNTER_OFFER", price);
   };
 
   const changeOffer = async (status, newPrice = null) => {
     if (!selectedOffer || isClosed) return;
+    const isCounter = status === "COUNTER_OFFER";
     if (isBlockedBuyer && (status === "ACCEPTED" || newPrice)) {
-      setActionError("Conta bloqueada para compras até a quitação do reembolso PIX pendente.");
+      const message = "Conta bloqueada para compras até a quitação do reembolso PIX pendente.";
+      if (isCounter) setCounterError(message);
+      else setActionError(message);
+      notify.warning(message);
       return;
     }
     setActionError("");
@@ -103,10 +164,27 @@ export default function NegotiationDesk() {
         id: selectedOffer.id,
         data: { status, ...(newPrice ? { offered_price: Number(newPrice) } : {}) },
       });
-      setShowCounterModal(false);
-      counterForm.reset();
+      if (isCounter) closeCounterModal();
+      notify.success(
+        status === "ACCEPTED" ? "Proposta aceita." : status === "REJECTED" ? "Proposta recusada." : "Contraproposta enviada.",
+      );
     } catch (err) {
-      setActionError(err.message || "Erro ao atualizar estado da negociação.");
+      const message = err.message || "Erro ao atualizar estado da negociação.";
+      notify.error(message);
+      if (isCounter && err.field === "offered_price") {
+        // Valor recusado pela validação do servidor: o erro fica no campo, com o modal aberto.
+        counterForm.setError("price", { message });
+      } else if (REFUSAL_STATUSES.includes(err.status)) {
+        // O servidor recusou: fecha o modal e recarrega para a tela mostrar o estado real
+        // (negociação encerrada → somente leitura).
+        if (isCounter) closeCounterModal();
+        setActionError(message);
+        refetchOffers();
+      } else if (isCounter) {
+        setCounterError(message);
+      } else {
+        setActionError(message);
+      }
     }
   };
 
@@ -209,9 +287,11 @@ export default function NegotiationDesk() {
                         className={actionBtn(canAccept, "bg-neon-mint hover:bg-neon-mint/90 text-noir-950 shadow-md cursor-pointer font-black")}>
                         ACEITAR
                       </button>
-                      <button type="button" onClick={() => setShowCounterModal(true)} disabled={!isProfileSynced || updateOffer.isPending || isClosed || isBlockedBuyer}
-                        className={actionBtn(!isClosed, "bg-noir-800 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 cursor-pointer")}>
-                        CONTRAPROPOSTA
+                      <button type="button" onClick={openCounterModal}
+                        disabled={!isProfileSynced || updateOffer.isPending || checkingStatus || isClosed || isBlockedBuyer}
+                        title={isClosed ? "Negociação encerrada" : ""}
+                        className={actionBtn(!isClosed && !isBlockedBuyer, "bg-noir-800 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 cursor-pointer")}>
+                        {checkingStatus ? "VERIFICANDO..." : "CONTRAPROPOSTA"}
                       </button>
                       <button type="button" onClick={() => changeOffer("REJECTED")} disabled={updateOffer.isPending || isClosed}
                         className={actionBtn(!isClosed, "bg-noir-800 border border-neon-pink text-neon-pink hover:bg-neon-pink/10 cursor-pointer")}>
@@ -297,25 +377,29 @@ export default function NegotiationDesk() {
         )}
       </main>
 
-      {showCounterModal && selectedOffer && (
+      {showCounterModal && selectedOffer && !isClosed && (
         <div className="fixed inset-0 z-50 bg-noir-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={counterForm.handleSubmit(({ price }) => changeOffer("COUNTER_OFFER", price))} noValidate
+          <form onSubmit={counterForm.handleSubmit(onSubmitCounter)} noValidate role="dialog" aria-modal="true"
             className="bg-noir-900 border-2 border-neon-cyan p-5 max-w-xs w-full chamfer-box space-y-4 shadow-2xl">
             <h3 className="text-xs font-black text-white uppercase tracking-wider">NOVA CONTRAPROPOSTA</h3>
             <p className="text-[11px] text-slate-300">Valor de anúncio: R$ {selectedOffer.original_price}</p>
             <div>
               <label htmlFor="counter-price" className="block text-[10px] text-slate-400 mb-1">NOVO VALOR PROPOSTO (R$)</label>
-              <input id="counter-price" type="number" step="0.01" placeholder="Ex: 280.00" {...counterForm.register("price")}
+              <PriceInput id="counter-price" placeholder="Ex: 280,00" {...counterForm.register("price")}
                 className="w-full bg-noir-950 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-cyan" />
               <FieldError error={counterForm.formState.errors.price} />
             </div>
+            {counterError && (
+              <p role="alert" className="border border-neon-pink bg-noir-950 p-2 text-[11px] font-bold text-neon-pink">⚠ {counterError}</p>
+            )}
             <div className="flex gap-2">
-              <button type="button" onClick={() => { setShowCounterModal(false); counterForm.reset(); }}
+              <button type="button" onClick={closeCounterModal}
                 className="flex-1 py-2 bg-noir-800 text-slate-300 border border-slate-600 text-xs font-bold">
                 CANCELAR
               </button>
-              <button type="submit" disabled={updateOffer.isPending} className="flex-1 py-2 bg-neon-cyan text-noir-950 text-xs font-black disabled:opacity-50">
-                ENVIAR
+              <button type="submit" disabled={updateOffer.isPending || counterForm.formState.isSubmitting}
+                className="flex-1 py-2 bg-neon-cyan text-noir-950 text-xs font-black disabled:opacity-50">
+                {updateOffer.isPending || counterForm.formState.isSubmitting ? "ENVIANDO..." : "ENVIAR"}
               </button>
             </div>
           </form>

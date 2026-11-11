@@ -6,7 +6,7 @@ import { Strategy as JwtStrategy, ExtractJwt } from "passport-jwt";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import * as store from "./store.js";
-import { fail, parse, privateProfile, publicProfile, now, HttpError } from "./http.js";
+import { fail, parse, privateProfile, publicProfile, now, HttpError, exigeGravado } from "./http.js";
 import { registerSchema, loginSchema, updateMeSchema, changePasswordSchema } from "./schemas.js";
 import { criarLimitador, ipDe } from "./rateLimit.js";
 
@@ -207,7 +207,7 @@ router.get("/usuarios/me", exigeJwt, (req, res) => {
 // são decididos pelo servidor e são ignorados se vierem no corpo.
 async function updateMe(req, res) {
   const body = parse(updateMeSchema, req.body);
-  const updated = await store.update("profiles", req.user.id, body);
+  const updated = exigeGravado(await store.update("profiles", req.user.id, body), "Operador");
   res.json(privateProfile(updated));
 }
 router.patch("/usuarios/me", exigeJwt, updateMe);
@@ -226,7 +226,10 @@ router.patch("/usuarios/me/senha", exigeJwt, async (req, res) => {
   const ok = await bcrypt.compare(current_password, String(req.user.password_hash || ""));
   if (!ok) fail(400, "Senha atual incorreta.", "current_password");
   const password_hash = await bcrypt.hash(new_password, 10);
-  const user = await store.update("profiles", req.user.id, { password_hash, password_changed_at: now() });
+  const user = exigeGravado(
+    await store.update("profiles", req.user.id, { password_hash, password_changed_at: now() }),
+    "Operador",
+  );
   trocaSenha.reset(chave);
   res.json({ message: "Senha alterada com sucesso.", token: emitirToken(user) });
 });

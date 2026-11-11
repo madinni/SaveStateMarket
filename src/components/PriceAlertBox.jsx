@@ -7,6 +7,8 @@ import { useMyAlerts, useCreateAlert, useUpdateAlert, useDeleteAlert } from "../
 import { alertTargetSchema } from "../schemas";
 import { normalizeAlertTitle } from "../utils/alerts";
 import FieldError from "./FieldError";
+import PriceInput from "./PriceInput";
+import { notify } from "../utils/toast";
 
 const brl = (v) => `R$ ${Number(v).toFixed(2)}`;
 
@@ -48,8 +50,10 @@ export default function PriceAlertBox({ product }) {
       }
       setEditing(false);
       reset({ target_price: "" });
+      notify.success(active ? "Alvo do alerta atualizado." : "Alerta de preço ativado.");
     } catch (err) {
       setError(err.message || "Não foi possível salvar o alerta.");
+      notify.error(err.message || "Não foi possível salvar o alerta.");
     }
   };
 
@@ -57,8 +61,10 @@ export default function PriceAlertBox({ product }) {
     setError("");
     try {
       await deleteAlert.mutateAsync(active.id);
+      notify.success("Alerta removido.");
     } catch (err) {
       setError(err.message || "Não foi possível remover o alerta.");
+      notify.error(err.message || "Não foi possível remover o alerta.");
     }
   };
 
@@ -105,7 +111,7 @@ export default function PriceAlertBox({ product }) {
           <label htmlFor="alert-target" className="block text-[10px] text-slate-400">
             ME AVISE QUANDO "{product.title}" ESTIVER POR ATÉ (R$) — ESTE ANÚNCIO: {brl(product.price)}
           </label>
-          <input id="alert-target" type="number" step="0.01" {...register("target_price")}
+          <PriceInput id="alert-target" placeholder="Ex: 150,00" {...register("target_price")}
             className="w-full bg-noir-900 border-2 border-slate-600 p-2 text-slate-100 text-xs focus:outline-none focus:border-neon-amber" />
           <FieldError error={errors.target_price} />
           {!active && (

@@ -18,6 +18,14 @@ export function parse(schema, body) {
   fail(400, issue?.message || "Dados inválidos.", issue?.path?.join("."));
 }
 
+// #44: store.update/updateWhere devolvem null quando o registro foi apagado entre a leitura
+// (exigeItem) e a gravação. Sem esta checagem a rota usaria null e cairia em 500; aqui vira
+// o mesmo 404 de exigeItem ("<Rótulo> não encontrado.").
+export function exigeGravado(registro, label = "Registro") {
+  if (!registro) fail(404, `${label} não encontrado.`);
+  return registro;
+}
+
 export const sameId = (a, b) => a != null && b != null && String(a) === String(b);
 
 export const now = () => new Date().toISOString();

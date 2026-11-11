@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parsePrice } from "../utils/price";
 
 export const PLATFORMS = [
   { value: "SNES (CART)", label: "Super Nintendo (SNES)" },
@@ -53,17 +54,36 @@ export const registerSchema = z.object({
   shipping_address: shippingAddressSchema,
 });
 
+// Campos de preço no padrão pt-BR: "1.500" → 1500, "1.500,50" → 1500.5, "12,50" → 12.5
+// ("12.50" também vira 12.5). A regra fica em utils/price.js. Sem isso o z.coerce.number()
+// transformaria "12,50" em NaN e "1.500" em 1.5. Texto vazio ou inválido segue como texto
+// e cai nas mensagens de erro do schema.
+const decimalText = (value) => {
+  if (typeof value !== "string") return value;
+  const number = parsePrice(value);
+  return number === null ? value.trim() : number;
+};
+
 // Zod 4: a mensagem de tipo inválido vai em { error } (invalid_type_error foi removido).
 const money = (message = "Informe um valor válido.") =>
-  z.coerce.number({ error: message }).positive("O valor deve ser maior que zero.");
+  z.preprocess(
+    decimalText,
+    z.coerce
+      .number({ error: message })
+      .positive("O valor deve ser maior que zero.")
+      .max(100000, "O valor máximo é R$ 100.000,00."),
+  );
 
 // Título e plataforma vêm do catálogo (Jogo Base) a partir do game_id.
 export const productSchema = z.object({
   game_id: z.string().min(1, "Selecione um jogo do catálogo."),
-  price: z.coerce
-    .number({ error: "Informe um preço válido." })
-    .positive("O preço deve ser maior que zero.")
-    .max(100000, "O preço máximo é R$ 100.000,00."),
+  price: z.preprocess(
+    decimalText,
+    z.coerce
+      .number({ error: "Informe um preço válido." })
+      .positive("O preço deve ser maior que zero.")
+      .max(100000, "O preço máximo é R$ 100.000,00."),
+  ),
   has_box: z.boolean(),
   has_manual: z.boolean(),
   is_functional: z.boolean(),
@@ -107,10 +127,7 @@ export const guestTicketSchema = ticketSchema.extend({
 });
 
 export const priceSchema = z.object({
-  price: z.coerce
-    .number({ error: "Informe um valor válido." })
-    .positive("O valor deve ser maior que zero.")
-    .max(100000, "O valor máximo é R$ 100.000,00."),
+  price: money(),
 });
 
 export const offerSchema = priceSchema.extend({

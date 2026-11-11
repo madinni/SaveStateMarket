@@ -12,6 +12,8 @@ import { normalizeTitle } from "../services/priceReference";
 import { formatBRL } from "../utils/format";
 import { productSchema, PLATFORMS } from "../schemas";
 import FieldError from "../components/FieldError";
+import PriceInput from "../components/PriceInput";
+import { notify } from "../utils/toast";
 
 const DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80";
@@ -57,6 +59,8 @@ export default function DropAsset() {
 
   const [previewImg, setPreviewImg] = useState(null);
   const [submitError, setSubmitError] = useState("");
+  // Enquanto a foto é comprimida o preview fica em P&B; pronta, aparece em cores.
+  const [processingImage, setProcessingImage] = useState(false);
 
   const { data: product, isLoading: loadingProduct, isError: productError } = useProduct(id);
   const { data: games = [], isError: gamesError } = useGames();
@@ -137,11 +141,15 @@ export default function DropAsset() {
   const handleImage = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setProcessingImage(true);
     try {
       setPreviewImg(await resizeImage(file));
       setSubmitError("");
     } catch (err) {
       setSubmitError(err.message);
+      notify.error(err);
+    } finally {
+      setProcessingImage(false);
     }
   };
 
@@ -169,6 +177,7 @@ export default function DropAsset() {
     try {
       if (isEdit) {
         await updateProduct.mutateAsync({ id, data: payload });
+        notify.success("Anúncio atualizado.");
         navigate(`/product/${id}`);
       } else {
         await createProduct.mutateAsync({
@@ -177,10 +186,12 @@ export default function DropAsset() {
           seller_id: user.id,
           created_at: new Date().toISOString(),
         });
+        notify.success("Anúncio publicado.");
         navigate("/");
       }
     } catch (err) {
       setSubmitError(err.message || "Falha na transmissão do ativo.");
+      notify.error(err.message || "Não foi possível salvar o anúncio.");
     }
   };
 
@@ -241,7 +252,10 @@ export default function DropAsset() {
               className="w-full aspect-[16/9] border-2 border-dashed border-noir-700 hover:border-neon-pink bg-noir-900/60 chamfer-box flex items-center justify-center cursor-pointer overflow-hidden"
             >
               {previewImg ? (
-                <img src={previewImg} alt="Preview" className="w-full h-full object-cover grayscale contrast-125" />
+                <img src={previewImg} alt="Preview da foto do anúncio"
+                  className={`w-full h-full object-cover transition ${processingImage ? "grayscale opacity-60" : ""}`} />
+              ) : processingImage ? (
+                <p className="text-xs text-slate-400 animate-pulse">PROCESSANDO FOTO...</p>
               ) : (
                 <div className="text-center">
                   <p className="text-xs text-white font-bold">+ UPLOAD_RAW_SNAP</p>
@@ -294,7 +308,7 @@ export default function DropAsset() {
 
           <div>
             <label htmlFor="asset-price" className="block text-[11px] text-slate-400 uppercase mb-1">[03] Preço Solicitado (R$)</label>
-            <input id="asset-price" type="number" step="0.01" min="0" placeholder="0.00" {...register("price")}
+            <PriceInput id="asset-price" placeholder="0,00" {...register("price")}
               className={`${field} font-pixel text-2xl`} />
             <FieldError error={errors.price} />
           </div>
